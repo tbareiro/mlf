@@ -1,0 +1,635 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MLF Bookmarklets</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+<style>
+  :root{
+    --paper:#f6f4ee;
+    --ink:#1c1f26;
+    --mute:#6a6f7a;
+    --line:#e2ddd0;
+    --accent:#2f5fe0;
+    --accent-ink:#ffffff;
+    --success:#1a7f37;
+    --panel:#12141a;
+    --panel-ink:#e7e9ee;
+    --panel-line:#2a2e38;
+    --card:#fffdf8;
+    --warn:#b5750f;
+    --accent-wash:#e9edfc;
+    --shadow:rgba(28,31,38,.14);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#15161a;
+      --ink:#eceae3;
+      --mute:#9a9da6;
+      --line:#2c2e35;
+      --accent:#6f93ff;
+      --accent-ink:#0c1020;
+      --success:#4fbf6d;
+      --panel:#0b0c10;
+      --panel-ink:#e7e9ee;
+      --panel-line:#252831;
+      --card:#1b1c22;
+      --warn:#e0b568;
+      --accent-wash:#1b2542;
+      --shadow:rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#15161a;
+    --ink:#eceae3;
+    --mute:#9a9da6;
+    --line:#2c2e35;
+    --accent:#6f93ff;
+    --accent-ink:#0c1020;
+    --success:#4fbf6d;
+    --panel:#0b0c10;
+    --panel-ink:#e7e9ee;
+    --panel-line:#252831;
+    --card:#1b1c22;
+    --warn:#e0b568;
+    --accent-wash:#1b2542;
+    --shadow:rgba(0,0,0,.4);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:"Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size:16px;
+    line-height:1.55;
+  }
+  .wrap{max-width:700px;margin:0 auto;padding:56px 24px 80px}
+
+  .eyebrow{
+    font-family:"IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-size:12px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    margin:0 0 10px;
+  }
+  h1{
+    font-family:"IBM Plex Sans", Arial, sans-serif;
+    font-weight:700;
+    font-size:clamp(28px,4.5vw,40px);
+    line-height:1.12;
+    letter-spacing:-.01em;
+    margin:0 0 14px;
+    text-wrap:balance;
+  }
+  .lede{
+    color:var(--mute);
+    font-size:18px;
+    max-width:56ch;
+    margin:0 0 40px;
+  }
+  .lede code{font-family:"IBM Plex Mono",monospace;font-size:.85em}
+
+  h2{
+    font-family:"IBM Plex Sans", Arial, sans-serif;
+    font-weight:600;
+    font-size:14px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--mute);
+    margin:0 0 16px;
+    display:flex;
+    align-items:center;
+    gap:9px;
+  }
+  h2::before{
+    content:"";
+    width:8px;
+    height:8px;
+    border-radius:2px;
+    background:var(--accent);
+    flex:0 0 auto;
+  }
+  section{margin-bottom:52px}
+
+  /* --- mock bookmarks bar --- */
+  .browser-chrome{
+    border:1px solid var(--line);
+    border-radius:12px;
+    overflow:hidden;
+    background:var(--card);
+    box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .chrome-top{
+    display:flex;
+    gap:6px;
+    align-items:center;
+    padding:10px 12px;
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--paper) 60%, var(--card));
+  }
+  .chrome-dot{width:9px;height:9px;border-radius:50%;background:var(--line)}
+  .chrome-address{
+    flex:1;
+    margin-left:8px;
+    height:22px;
+    border-radius:6px;
+    background:var(--paper);
+    border:1px solid var(--line);
+  }
+  .bookmarks-bar{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap:wrap;
+    padding:12px 14px;
+  }
+  .bk{
+    font-family:"IBM Plex Sans", Arial, sans-serif;
+    font-weight:600;
+    font-size:14px;
+    color:var(--accent-ink);
+    background:var(--accent);
+    text-decoration:none;
+    padding:8px 16px;
+    border-radius:7px;
+    cursor:grab;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    transition:transform .12s ease;
+  }
+  .bk:active{cursor:grabbing;transform:scale(.97)}
+  .bk .glyph{font-family:"IBM Plex Mono",monospace;font-size:12px;opacity:.85}
+  .drag-hint{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:12px;
+    color:var(--mute);
+    margin-top:12px;
+  }
+
+  /* --- copiar -> pegar flow diagram --- */
+  .flow{
+    display:flex;
+    align-items:stretch;
+    gap:12px;
+    margin-bottom:20px;
+  }
+  .flow-card{
+    flex:1 1 0;
+    min-width:0;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--card);
+    padding:18px 16px;
+    text-align:center;
+    box-shadow:0 1px 2px var(--shadow);
+  }
+  .flow-card .flow-icon{
+    width:30px;
+    height:30px;
+    margin:0 auto 10px;
+    color:var(--accent);
+  }
+  .flow-card .flow-icon svg{width:100%;height:100%;display:block}
+  .flow-card b{
+    display:block;
+    font-family:"IBM Plex Sans",Arial,sans-serif;
+    font-weight:600;
+    font-size:14px;
+    margin-bottom:4px;
+  }
+  .flow-card span{
+    display:block;
+    color:var(--mute);
+    font-size:12.5px;
+    line-height:1.4;
+  }
+  .flow-arrow{
+    flex:0 0 auto;
+    align-self:center;
+    color:var(--accent);
+    width:22px;
+    opacity:.8;
+  }
+  .flow-arrow svg{width:100%;display:block}
+  @media (max-width:520px){
+    .flow{flex-direction:column}
+    .flow-arrow{width:22px;height:22px;margin:2px auto;transform:rotate(90deg)}
+  }
+
+  /* --- steps --- */
+  ol.steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0}
+  ol.steps li{
+    display:grid;
+    grid-template-columns:32px 1fr;
+    gap:16px;
+    padding:16px 0;
+    border-top:1px solid var(--line);
+  }
+  ol.steps li:last-child{border-bottom:1px solid var(--line)}
+  .step-num{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:13px;
+    color:var(--accent);
+    padding-top:1px;
+  }
+  .step-body b{font-family:"IBM Plex Sans",Arial,sans-serif;font-weight:600}
+  .step-body{color:var(--ink);font-size:15px}
+  .step-body .sub{color:var(--mute);font-size:13.5px;margin-top:3px}
+
+  /* --- outcome preview: mock ficha + floating toast --- */
+  .result-frame{
+    position:relative;
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:var(--card);
+    box-shadow:0 1px 2px var(--shadow);
+    padding:20px;
+    min-height:200px;
+    overflow:hidden;
+  }
+  .skel-row{display:flex;gap:10px;margin-bottom:12px}
+  .skel{background:var(--line);border-radius:5px;opacity:.6}
+  .skel.h-label{height:9px;width:38%}
+  .skel.h-field{height:26px;flex:1;border-radius:6px}
+  .skel-col{flex:1;display:flex;flex-direction:column;gap:6px}
+
+  .toast{
+    position:absolute;
+    right:16px;
+    bottom:16px;
+    left:16px;
+    max-width:270px;
+    margin-left:auto;
+    background:var(--panel);
+    color:var(--panel-ink);
+    border-radius:10px;
+    padding:13px 14px;
+    box-shadow:0 10px 28px var(--shadow);
+    font-family:"IBM Plex Mono",monospace;
+    font-size:12.5px;
+  }
+  .toast-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:7px}
+  .toast-row:last-child{margin-bottom:0}
+  .toast-dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex:0 0 auto}
+  .toast-dot.ok{background:var(--success)}
+  .toast-dot.warn{background:var(--warn)}
+  .toast-text b{font-weight:600}
+  .toast-text{color:var(--panel-ink)}
+
+  /* --- guardrails list --- */
+  ul.guardrails{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+  ul.guardrails li{
+    display:grid;
+    grid-template-columns:20px 1fr;
+    gap:10px;
+    font-size:15px;
+    color:var(--ink);
+  }
+  ul.guardrails li::before{
+    content:"—";
+    color:var(--mute);
+  }
+
+  footer{
+    border-top:1px solid var(--line);
+    padding-top:20px;
+    color:var(--mute);
+    font-size:13px;
+    font-family:"IBM Plex Mono",monospace;
+  }
+
+  a{color:var(--accent)}
+  a:focus-visible, button:focus-visible, .bk:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+  @media (prefers-reduced-motion: reduce){
+    .bk{transition:none}
+  }
+
+  /* --- demo instalación/uso (auto-loop) --- */
+  .demo-frame{border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 1px 2px var(--shadow);padding:16px;overflow:hidden}
+  .demo-chrome{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--card);margin-bottom:16px}
+  .demo-top{display:flex;gap:6px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line);background:color-mix(in srgb, var(--paper) 60%, var(--card))}
+  .demo-addr{flex:1;margin-left:6px;height:18px;border-radius:5px;background:var(--paper);border:1px solid var(--line)}
+  .demo-drag-row{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px dashed var(--line)}
+  .demo-hint{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--mute);margin-left:auto}
+  .demo-bk{font-family:"IBM Plex Sans",Arial,sans-serif;font-weight:600;font-size:12.5px;color:var(--accent-ink);background:var(--accent);padding:6px 12px;border-radius:6px;display:inline-flex;align-items:center;gap:6px;transition:left .5s cubic-bezier(.3,.6,.3,1),top .5s cubic-bezier(.3,.6,.3,1);white-space:nowrap}
+  .demo-bk .glyph{font-family:"IBM Plex Mono",monospace;font-size:10px;opacity:.85}
+  .demo-bar{display:flex;gap:8px;align-items:center;padding:10px 12px;min-height:36px;background:color-mix(in srgb, var(--paper) 70%, var(--card));transition:background .2s}
+  .demo-bar.flash{background:var(--accent-wash)}
+  .demo-placeholder{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--mute);font-style:italic}
+  .demo-stage{display:flex;gap:14px}
+  .demo-mock{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:14px;position:relative;overflow:hidden;min-height:150px}
+  .demo-mock h4{margin:0 0 10px;font-family:"IBM Plex Sans",Arial,sans-serif;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mute)}
+  .demo-row{display:flex;gap:8px;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px;color:var(--ink)}
+  .demo-row b{width:80px;flex:0 0 auto;color:var(--mute);font-weight:600}
+  .demo-field{margin-bottom:10px}
+  .demo-field label{display:block;font-family:"IBM Plex Sans",Arial,sans-serif;font-size:10.5px;color:var(--mute);margin-bottom:3px}
+  .demo-box{border:1px solid var(--line);border-radius:5px;height:26px;background:var(--card);display:flex;align-items:center;padding:0 8px;font-size:12px;color:var(--mute);transition:background .2s,border-color .2s,color .2s}
+  .demo-box.filled{color:var(--ink);background:color-mix(in srgb, var(--success) 12%, var(--card));border-color:color-mix(in srgb, var(--success) 40%, var(--line))}
+  .demo-overlay{position:absolute;top:10px;right:10px;width:158px;background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 20px var(--shadow);opacity:0;transform:translateY(-6px);transition:opacity .25s,transform .25s;font-size:10.5px}
+  .demo-overlay.show{opacity:1;transform:translateY(0)}
+  .demo-oh{padding:6px 8px;font-weight:600;border-bottom:1px solid var(--line);color:var(--ink)}
+  .demo-orow{display:flex;gap:5px;align-items:center;padding:4px 8px;border-bottom:1px solid var(--line);color:var(--ink)}
+  .demo-orow input{margin:0}
+  .demo-ofoot{padding:6px 8px}
+  .demo-fakebtn{display:block;text-align:center;padding:5px;background:var(--accent);color:var(--accent-ink);border-radius:4px;font-weight:600;transition:filter .15s}
+  .demo-fakebtn.press{filter:brightness(.85)}
+  .demo-toast{position:absolute;left:10px;right:10px;bottom:10px;background:var(--panel);color:var(--panel-ink);border-radius:7px;padding:8px 10px;font-size:11px;opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s}
+  .demo-toast.show{opacity:1;transform:translateY(0)}
+  .demo-toast b{color:var(--success)}
+  @media (max-width:560px){
+    .demo-stage{flex-direction:column}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .demo-bk, .demo-bar, .demo-box, .demo-overlay, .demo-toast, .demo-fakebtn{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Catálogo · herramienta interna</p>
+  <h1>Llevá los atributos de ML a la ficha de carga sin instalar nada</h1>
+  <p class="lede">Dos bookmarklets — links de favoritos comunes, no extensiones — que arrastrás una vez a la barra de Chrome. El puente entre las dos páginas es el portapapeles del sistema, nada más.</p>
+
+  <section>
+    <h2>Tu barra de favoritos, con esto agregado</h2>
+    <div class="browser-chrome">
+      <div class="chrome-top">
+        <div class="chrome-dot"></div><div class="chrome-dot"></div><div class="chrome-dot"></div>
+        <div class="chrome-address"></div>
+      </div>
+      <div class="bookmarks-bar">
+        <a class="bk" id="mlf-copiar-link"><span class="glyph">↳</span>MLF Copiar</a>
+        <a class="bk" id="mlf-pegar-link"><span class="glyph">↲</span>MLF Pegar</a>
+      </div>
+    </div>
+    <p class="drag-hint">arrastrá cada botón de acá arriba directo a tu barra de favoritos (Ctrl+Shift+B si no la tenés visible)</p>
+  </section>
+
+  <section>
+    <h2>Instalación y uso, en loop</h2>
+    <div class="demo-frame">
+      <div class="demo-chrome">
+        <div class="demo-top"><span class="chrome-dot"></span><span class="chrome-dot"></span><span class="chrome-dot"></span><span class="demo-addr"></span></div>
+        <div class="demo-drag-row" id="demoDragRow">
+          <div class="demo-bk" id="demoCopiarPill"><span class="glyph">↳</span>MLF Copiar</div>
+          <div class="demo-bk" id="demoPegarPill"><span class="glyph">↲</span>MLF Pegar</div>
+          <span class="demo-hint">arrastrá a la barra ↓</span>
+        </div>
+        <div class="demo-bar" id="demoBar"><span class="demo-placeholder">tu barra de favoritos</span></div>
+      </div>
+      <div class="demo-stage">
+        <div class="demo-mock" id="demoProduct">
+          <h4>Publicación ML</h4>
+          <div class="demo-row"><b>Marca</b><span>Samsung</span></div>
+          <div class="demo-row"><b>Modelo</b><span>Galaxy A16</span></div>
+          <div class="demo-row"><b>Color</b><span>Negro</span></div>
+          <div class="demo-row"><b>Memoria</b><span>128 GB</span></div>
+          <div class="demo-overlay" id="demoOverlay">
+            <div class="demo-oh">MLF — Atributos (4)</div>
+            <div class="demo-orow"><input type="checkbox" checked disabled>Marca: Samsung</div>
+            <div class="demo-orow"><input type="checkbox" checked disabled>Modelo: Galaxy A16</div>
+            <div class="demo-orow"><input type="checkbox" checked disabled>Color: Negro</div>
+            <div class="demo-orow"><input type="checkbox" checked disabled>Memoria: 128 GB</div>
+            <div class="demo-ofoot"><span class="demo-fakebtn">Copiar seleccionados</span></div>
+          </div>
+          <div class="demo-toast" id="demoCopiarToast">Copiado (4). Andá a la ficha y usá "MLF Pegar".</div>
+        </div>
+        <div class="demo-mock" id="demoFicha">
+          <h4>Ficha de carga</h4>
+          <div class="demo-field"><label>Marca</label><div class="demo-box" id="demoF1">completar…</div></div>
+          <div class="demo-field"><label>Modelo</label><div class="demo-box" id="demoF2">completar…</div></div>
+          <div class="demo-field"><label>Color</label><div class="demo-box" id="demoF3">completar…</div></div>
+          <div class="demo-field"><label>Memoria</label><div class="demo-box" id="demoF4">completar…</div></div>
+          <div class="demo-toast" id="demoPegarToast"><b>4 campos completados</b> · 0 sin match</div>
+        </div>
+      </div>
+    </div>
+    <p class="drag-hint">simulación automática, en loop — así se ve en tu navegador real</p>
+  </section>
+
+  <section>
+    <h2>Cómo viaja el dato</h2>
+    <div class="flow">
+      <div class="flow-card">
+        <div class="flow-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        </div>
+        <b>Publicación ML</b>
+        <span>Título, specs, variación, bullets</span>
+      </div>
+      <div class="flow-arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
+      </div>
+      <div class="flow-card">
+        <div class="flow-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1Z"/><rect x="5" y="5" width="14" height="16" rx="2"/><path d="M9 11h6M9 15h4"/></svg>
+        </div>
+        <b>Portapapeles</b>
+        <span>Un solo bloque de datos, nada de servidores</span>
+      </div>
+      <div class="flow-arrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16M14 6l6 6-6 6"/></svg>
+      </div>
+      <div class="flow-card">
+        <div class="flow-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 10h8M8 14h5"/><circle cx="16.5" cy="14.5" r="0.5" fill="currentColor"/></svg>
+        </div>
+        <b>Ficha de carga</b>
+        <span>Campos, dropdowns y toggles autocompletados</span>
+      </div>
+    </div>
+    <ol class="steps">
+      <li>
+        <span class="step-num">01</span>
+        <div class="step-body">
+          <div><b>Abrí la publicación</b> y clickeá <b>MLF Copiar</b>.</div>
+          <div class="sub">Evita duplicar el mismo dato con distinto nombre, y separa renglones combinados ("Ancho x Alto: 31 cm x 6 cm") en atributos por separado.</div>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">02</span>
+        <div class="step-body">
+          <div><b>Tildá</b> lo que querés llevar y apretá "Copiar seleccionados".</div>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">03</span>
+        <div class="step-body">
+          <div><b>Andá a la ficha de carga</b> y clickeá <b>MLF Pegar</b>.</div>
+          <div class="sub">Entiende texto, dropdowns Andes (simples y multi-selección, con opción de agregar), toggles Sí/No, editores enriquecidos y campos "número + unidad". Sin portapapeles por script, te pide pegar con Ctrl+V.</div>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Lo que ves al terminar</h2>
+    <div class="result-frame">
+      <div class="skel-row"><div class="skel-col"><div class="skel h-label"></div><div class="skel h-field"></div></div><div class="skel-col"><div class="skel h-label"></div><div class="skel h-field"></div></div></div>
+      <div class="skel-row"><div class="skel-col"><div class="skel h-label"></div><div class="skel h-field"></div></div><div class="skel-col"><div class="skel h-label"></div><div class="skel h-field"></div></div></div>
+      <div class="skel-row"><div class="skel-col"><div class="skel h-label"></div><div class="skel h-field"></div></div></div>
+      <div class="toast">
+        <div class="toast-row"><span class="toast-dot ok"></span><span class="toast-text">14 campo(s) completados</span></div>
+        <div class="toast-row"><span class="toast-dot warn"></span><span class="toast-text">2 aproximados <b>(revisar)</b></span></div>
+        <div class="toast-row"><span class="toast-dot warn"></span><span class="toast-text">1 sin match</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Lo que esto no hace</h2>
+    <ul class="guardrails">
+      <li>No clickea Guardar, Finalizar ni Enviar — eso queda siempre en tu mano.</li>
+      <li>No corre solo: cada paso empieza con un click tuyo, nunca con un timer.</li>
+      <li>No manda datos a ningún servidor propio — el único destino es el formulario que ya tenés en pantalla.</li>
+      <li>No copia fotos — eso queda para completar a mano por ahora.</li>
+      <li>No copia GTIN — MercadoLibre no lo muestra en la ficha de la publicación. Sí copia el ISBN cuando está visible.</li>
+      <li>No confía en silencio: cuando completa algo por aproximación, o cuando agrega una opción nueva a una lista, lo marca aparte en vez de darlo por bueno — igual conviene revisar, sobre todo en listas cerradas (ej. un pedal cargado como "Guitarra" puede pegarse como "Guitarra acústica").</li>
+      <li>Solo lleva la información de un lado al otro — el análisis y la carga fina siguen haciéndose a mano desde BC y el sitio.</li>
+      <li>Es un prototipo para mostrar al equipo, no para generalizar en catálogo real sin luz verde.</li>
+    </ul>
+  </section>
+
+  <footer>
+    MLF · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
+    <div style="margin-top:10px">
+      <a id="mlf-copiar-beta-link" style="color:var(--mute);font-size:11px;text-decoration:none;border-bottom:1px dotted var(--mute)">build de prueba: Copiar (avisa variantes de color)</a>
+    </div>
+  </footer>
+</div>
+<script src="copiar.url.js"></script>
+<script src="pegar.url.js"></script>
+<script src="copiar.beta.url.js"></script>
+<script>
+  document.getElementById("mlf-copiar-link").href = window.MLF_COPIAR_HREF;
+  document.getElementById("mlf-pegar-link").href = window.MLF_PEGAR_HREF;
+  document.getElementById("mlf-copiar-beta-link").href = window.MLF_COPIAR_BETA_HREF;
+</script>
+
+<script>
+  // Demo automática de instalación + uso — simula, en loop, exactamente lo
+  // que hace la sección de arriba (drag-and-drop a favoritos, Copiar,
+  // Pegar) sin depender de un gif exportado: corre en vivo en el navegador
+  // de quien visita, respeta el tema claro/oscuro de la página y se
+  // detiene solo si el visitor prefiere menos movimiento.
+  (function () {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) return;
+
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    function installPill(pill, bar) {
+      return new Promise((resolve) => {
+        const startRect = pill.getBoundingClientRect();
+        const barRect = bar.getBoundingClientRect();
+        const clone = pill.cloneNode(true);
+        clone.style.position = "fixed";
+        clone.style.left = startRect.left + "px";
+        clone.style.top = startRect.top + "px";
+        clone.style.zIndex = "50";
+        document.body.appendChild(clone);
+        pill.style.visibility = "hidden";
+        bar.classList.add("flash");
+        requestAnimationFrame(() => {
+          bar.querySelector(".demo-placeholder")?.remove();
+          const slot = document.createElement("span");
+          slot.style.display = "inline-block";
+          slot.style.width = startRect.width + "px";
+          bar.appendChild(slot);
+          const targetRect = slot.getBoundingClientRect();
+          requestAnimationFrame(() => {
+            clone.style.left = targetRect.left + "px";
+            clone.style.top = targetRect.top + "px";
+          });
+        });
+        setTimeout(() => {
+          bar.classList.remove("flash");
+          clone.remove();
+          bar.querySelector("span:not(.demo-placeholder)")?.remove();
+          const installed = pill.cloneNode(true);
+          installed.removeAttribute("id");
+          bar.appendChild(installed);
+          resolve(installed);
+        }, 550);
+      });
+    }
+
+    async function runDemoLoop() {
+      const dragRow = document.getElementById("demoDragRow");
+      const bar = document.getElementById("demoBar");
+      const overlay = document.getElementById("demoOverlay");
+      const copiarToast = document.getElementById("demoCopiarToast");
+      const pegarToast = document.getElementById("demoPegarToast");
+      const fakeBtn = overlay.querySelector(".demo-fakebtn");
+      const fields = ["demoF1", "demoF2", "demoF3", "demoF4"];
+      const values = ["Samsung", "Galaxy A16", "Negro", "128 GB"];
+
+      for (;;) {
+        // reset visual
+        bar.innerHTML = '<span class="demo-placeholder">tu barra de favoritos</span>';
+        dragRow.innerHTML = "";
+        const copiarPill = document.createElement("div");
+        copiarPill.className = "demo-bk";
+        copiarPill.innerHTML = '<span class="glyph">↳</span>MLF Copiar';
+        const pegarPill = document.createElement("div");
+        pegarPill.className = "demo-bk";
+        pegarPill.innerHTML = '<span class="glyph">↲</span>MLF Pegar';
+        dragRow.appendChild(copiarPill);
+        dragRow.appendChild(pegarPill);
+        overlay.classList.remove("show");
+        copiarToast.classList.remove("show");
+        pegarToast.classList.remove("show");
+        fields.forEach((id) => {
+          const el = document.getElementById(id);
+          el.textContent = "completar…";
+          el.classList.remove("filled");
+        });
+
+        await wait(900);
+        await installPill(copiarPill, bar);
+        await wait(500);
+        await installPill(pegarPill, bar);
+        await wait(700);
+
+        overlay.classList.add("show");
+        await wait(1300);
+        fakeBtn.classList.add("press");
+        await wait(150);
+        fakeBtn.classList.remove("press");
+        overlay.classList.remove("show");
+        copiarToast.classList.add("show");
+        await wait(1600);
+
+        fields.forEach((id, i) => {
+          setTimeout(() => {
+            const el = document.getElementById(id);
+            el.textContent = values[i];
+            el.classList.add("filled");
+          }, i * 150);
+        });
+        await wait(fields.length * 150 + 200);
+        pegarToast.classList.add("show");
+        await wait(2400);
+      }
+    }
+
+    const frame = document.querySelector(".demo-frame");
+    if (frame) {
+      const io = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) {
+          io.disconnect();
+          runDemoLoop();
+        }
+      });
+      io.observe(frame);
+    }
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+# Build output — regenerado por `node build.js` (ver README).
+# Se versiona el .src.js de cada bookmarklet; estos son el resultado
+# compilado que index.html carga en producción.
+*.min.js
+*.url.js
+*.url.txt
+
+# Prototipos viejos de la página, ya reemplazados por index.html.
+artifact.html
+artifact-template.html
+
+# Asset generado para una demo puntual, no es parte del sitio.
+instalacion.gif
+
+node_modules/
