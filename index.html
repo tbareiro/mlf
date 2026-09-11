@@ -303,6 +303,61 @@
     font-family:"IBM Plex Mono",monospace;
   }
 
+  .beta-details{margin-top:14px}
+  .beta-details summary{
+    cursor:pointer;
+    color:var(--mute);
+    font-size:11px;
+    list-style:none;
+  }
+  .beta-details summary::-webkit-details-marker{display:none}
+  .beta-details summary::before{content:"▸ ";display:inline-block;transition:transform .15s}
+  .beta-details[open] summary::before{transform:rotate(90deg)}
+  .beta-warn{
+    font-family:"IBM Plex Sans",Arial,sans-serif;
+    font-size:12px;
+    line-height:1.5;
+    color:var(--warn);
+    background:color-mix(in srgb, var(--warn) 12%, var(--paper));
+    border:1px solid color-mix(in srgb, var(--warn) 35%, var(--line));
+    border-radius:8px;
+    padding:8px 10px;
+    margin:8px 0 10px;
+  }
+  .beta-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .beta-list li{padding-bottom:10px;border-bottom:1px solid var(--line)}
+  .beta-list li:last-child{border-bottom:none;padding-bottom:0}
+  .beta-link{
+    font-family:"IBM Plex Sans",Arial,sans-serif;
+    font-weight:600;
+    font-size:12.5px;
+    color:var(--ink);
+    text-decoration:none;
+    border-bottom:1px dotted var(--mute);
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  .beta-tag{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:9.5px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    color:var(--accent);
+    background:var(--accent-wash);
+    padding:1px 6px;
+    border-radius:10px;
+    border-bottom:none;
+  }
+  .beta-desc{
+    display:block;
+    font-family:"IBM Plex Sans",Arial,sans-serif;
+    font-size:12px;
+    color:var(--mute);
+    margin-top:3px;
+    line-height:1.4;
+  }
+
   a{color:var(--accent)}
   a:focus-visible, button:focus-visible, .bk:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -498,18 +553,40 @@
 
   <footer>
     MLF · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
-    <div style="margin-top:10px">
-      <a id="mlf-copiar-beta-link" style="color:var(--mute);font-size:11px;text-decoration:none;border-bottom:1px dotted var(--mute)">build de prueba: Copiar (avisa variantes de color)</a>
-    </div>
+    <details class="beta-details">
+      <summary>Builds de prueba</summary>
+      <p class="beta-warn">
+        Sin confirmar todavía contra la herramienta interna real (bloqueada por VPN) —
+        probadas contra el flujo público equivalente. No reemplazan a MLF Copiar/Pegar de arriba.
+      </p>
+      <ul class="beta-list">
+        <li>
+          <a id="mlf-copiar-beta-link" class="beta-link">MLF Copiar <span class="beta-tag">avisa variantes</span></a>
+          <span class="beta-desc">Si la publicación tiene varios colores, solo avisa — no las recorre.</span>
+        </li>
+        <li>
+          <a id="mlf-copiar-variantes-link" class="beta-link">MLF Copiar Variantes <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Recorre sola todas las variantes de color/diseño y las junta en un solo copiado.</span>
+        </li>
+        <li>
+          <a id="mlf-pegar-variante-link" class="beta-link">MLF Pegar Variante <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Completa el bloque de una variante nueva, después de que vos clickeaste "Agregar variante" en la herramienta.</span>
+        </li>
+      </ul>
+    </details>
   </footer>
 </div>
 <script src="copiar.url.js"></script>
 <script src="pegar.url.js"></script>
 <script src="copiar.beta.url.js"></script>
+<script src="copiar.variantes.url.js"></script>
+<script src="pegar.variante.url.js"></script>
 <script>
   document.getElementById("mlf-copiar-link").href = window.MLF_COPIAR_HREF;
   document.getElementById("mlf-pegar-link").href = window.MLF_PEGAR_HREF;
   document.getElementById("mlf-copiar-beta-link").href = window.MLF_COPIAR_BETA_HREF;
+  document.getElementById("mlf-copiar-variantes-link").href = window.MLF_COPIAR_VARIANTES_HREF;
+  document.getElementById("mlf-pegar-variante-link").href = window.MLF_PEGAR_VARIANTE_HREF;
 </script>
 
 <script>

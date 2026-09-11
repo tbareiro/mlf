@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>MLF — probar variantes (local, sin deploy)</title>
+<style>
+  body{font:14px -apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#1c1f26}
+  h1{font-size:20px}
+  .bk{display:inline-block;font-weight:600;color:#fff;background:#3483fa;padding:10px 18px;border-radius:7px;text-decoration:none;margin:6px 10px 6px 0}
+  .warn{background:#fff7e6;border:1px solid #f1e2bd;color:#8a5a00;padding:10px 14px;border-radius:8px;font-size:13px;margin:16px 0}
+  ol{font-size:14px;line-height:1.6}
+  code{background:#f1f2f4;padding:1px 5px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>MLF — probar "Copiar Variantes" / "Pegar Variante"</h1>
+<div class="warn">
+  Página SOLO local, no deployada. Arrastrá los dos botones de abajo a tu
+  barra de favoritos para probar — no reemplazan a "MLF Copiar"/"MLF
+  Pegar" (esos siguen igual, sin tocar).
+</div>
+
+<p>
+  <a class="bk" id="copiar-variantes">↳ MLF Copiar Variantes</a>
+  <a class="bk" id="pegar-variante">↲ MLF Pegar Variante</a>
+</p>
+
+<ol>
+  <li>Arrastrá los dos botones de arriba a tu barra de favoritos.</li>
+  <li>Andá a una publicación de ML <strong>con variantes de color/diseño</strong>
+    (la de "Celular Samsung Galaxy A16" que usamos antes sirve) y corré
+    <strong>MLF Copiar Variantes</strong>. Va a recorrer los colores solo
+    — mirá que la página cambie de precio/stock momentáneamente, eso es
+    esperado.</li>
+  <li>En el picker, elegí qué variantes/atributos incluir y "Copiar
+    seleccionadas".</li>
+  <li>En la herramienta interna (o el flujo público de vendedor como
+    stand-in): corré <strong>MLF Pegar</strong> (el de siempre) para la
+    primera variante — sin cambios.</li>
+  <li>Clickeá vos "Agregar variante" en la herramienta.</li>
+  <li>Corré <strong>MLF Pegar Variante</strong>, elegí cuál variante
+    completar ahí.</li>
+</ol>
+
+<p>
+  Si "Pegar Variante" termina completando el bloque equivocado (el del
+  producto base en vez del nuevo), avisame — es el supuesto sin confirmar
+  que quedó anotado arriba de <code>pegar.variante.src.js</code>
+  (<code>PREFER_LAST_MATCH</code>), se ajusta rápido.
+</p>
+
+<script src="copiar.variantes.url.js"></script>
+<script src="pegar.variante.url.js"></script>
+<script>
+  document.getElementById("copiar-variantes").href = window.MLF_COPIAR_VARIANTES_HREF;
+  document.getElementById("pegar-variante").href = window.MLF_PEGAR_VARIANTE_HREF;
+</script>
+</body>
+</html>
