@@ -178,9 +178,19 @@
     return labelParts.map((label, i) => ({ label, value: valueParts[i] }));
   }
 
-  // Labels donde partir por coma NO tiene sentido — son prosa, no una lista
-  // de valores (ej. la descripción entera tiene comas por todos lados).
-  const MULTI_VALUE_EXCLUDED_LABELS = ["titulo", "título", "descripcion", "descripción"];
+  // Al revés de una lista negra de patrones a excluir (números con coma
+  // decimal, "Apellido, Nombre" de autor, direcciones, fechas... la lista
+  // de formas en que una coma NO es una lista real es interminable) esto
+  // es una lista BLANCA de labels donde sí sabemos, por uso real, que ML
+  // junta una lista real separada por coma. Si el label no matchea acá,
+  // el valor se deja entero pase lo que pase — más simple de razonar y
+  // más difícil de romper con un caso nuevo que no vimos todavía.
+  const MULTI_VALUE_LABEL_KEYWORDS = ["material"];
+
+  function labelAllowsMultiValue(label) {
+    const key = label.trim().toLowerCase();
+    return MULTI_VALUE_LABEL_KEYWORDS.some((kw) => key.includes(kw));
+  }
 
   // Saca una aclaración entre paréntesis al final de un valor (ej. "TPU
   // (poliuretano termoplástico)" -> "TPU"). Consulta real del equipo: en
@@ -202,33 +212,24 @@
    * checkbox propio) para que elijas cuál pegar — sin tildar ninguna por
    * default, así no se pega el combo entero por descuido (ver cb.checked
    * más abajo). Cada valor se limpia de su aclaración entre paréntesis.
-   * Solo se activa con 2+ pedazos no vacíos y razonablemente cortos — si el
-   * valor es en realidad una oración larga con comas (dirección, fecha,
-   * etc.), se deja como venía.
+   *
+   * Solo se activa si el LABEL está en MULTI_VALUE_LABEL_KEYWORDS (ver
+   * arriba) — nunca se adivina a partir del valor. Encontramos en vivo dos
+   * formas distintas en que una coma NO es una lista real y cada una
+   * requería su propia detección ad hoc: "Peso: 3,9 kg" (coma decimal,
+   * quedaba partido en "3" y "9 kg") y "Autor: Rothfuss, Patrick" (formato
+   * "Apellido, Nombre", quedaba partido en dos autores). Restringir por
+   * label de entrada evita toda esa familia de casos de una sola vez, en
+   * vez de sumar una excepción nueva cada vez que aparece un patrón nuevo.
    */
-  /**
-   * Detecta cuando la coma NO separa una lista real sino que es parte de
-   * un número — coma decimal ("Peso: 3,9 kg" -> ["3","9 kg"]) o de miles
-   * ("Capacidad: 5,000 mAh" -> ["5","000 mAh"]). Si CADA pedazo empieza
-   * con un dígito, un peso/capacidad/medida no viene en "opciones" para
-   * elegir, así que nunca se ofrece como multi-valor — se deja el valor
-   * original entero. Confirmado en vivo: "Peso: 3,9 kg" se partía en dos
-   * checkboxes ("3" y "9 kg") en vez de quedar como un solo atributo.
-   */
-  function isNumericFragmentList(parts) {
-    return parts.every((p) => /^\d/.test(p));
-  }
-
   function splitMultiValue(attr) {
-    const labelKey = attr.label.trim().toLowerCase();
-    if (MULTI_VALUE_EXCLUDED_LABELS.includes(labelKey)) return [attr];
+    if (!labelAllowsMultiValue(attr.label)) return [attr];
     if (!attr.value.includes(",")) return [attr];
     const parts = attr.value
       .split(",")
       .map((s) => stripParenthetical(s.trim()))
       .filter(Boolean);
     if (parts.length < 2 || parts.some((p) => p.length > 80)) return [attr];
-    if (isNumericFragmentList(parts)) return [attr];
     const seen = new Set();
     const out = [];
     for (const value of parts) {
