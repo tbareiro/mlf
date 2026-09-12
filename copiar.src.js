@@ -206,6 +206,19 @@
    * valor es en realidad una oración larga con comas (dirección, fecha,
    * etc.), se deja como venía.
    */
+  /**
+   * Detecta cuando la coma NO separa una lista real sino que es parte de
+   * un número — coma decimal ("Peso: 3,9 kg" -> ["3","9 kg"]) o de miles
+   * ("Capacidad: 5,000 mAh" -> ["5","000 mAh"]). Si CADA pedazo empieza
+   * con un dígito, un peso/capacidad/medida no viene en "opciones" para
+   * elegir, así que nunca se ofrece como multi-valor — se deja el valor
+   * original entero. Confirmado en vivo: "Peso: 3,9 kg" se partía en dos
+   * checkboxes ("3" y "9 kg") en vez de quedar como un solo atributo.
+   */
+  function isNumericFragmentList(parts) {
+    return parts.every((p) => /^\d/.test(p));
+  }
+
   function splitMultiValue(attr) {
     const labelKey = attr.label.trim().toLowerCase();
     if (MULTI_VALUE_EXCLUDED_LABELS.includes(labelKey)) return [attr];
@@ -215,6 +228,7 @@
       .map((s) => stripParenthetical(s.trim()))
       .filter(Boolean);
     if (parts.length < 2 || parts.some((p) => p.length > 80)) return [attr];
+    if (isNumericFragmentList(parts)) return [attr];
     const seen = new Set();
     const out = [];
     for (const value of parts) {
