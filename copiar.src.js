@@ -266,9 +266,17 @@
   // iguales y solo pegó en Fabricante").
   const VALUE_DEDUP_EXEMPT_LABELS = ["marca", "fabricante"];
 
+  // Antes esto DESCARTABA el candidato repetido en silencio (nunca
+  // llegaba ni al picker) — bug real reportado: un "Modelo" que no
+  // aparecía para copiar porque compartía valor con otro atributo, sin
+  // forma de enterarse ni de pegarlo a mano. Ahora en vez de decidir
+  // solo, se ofrece igual con un aviso de "posible repetido" — tildado
+  // por default (el resto de la decisión queda en manos de quien copia,
+  // no de una heurística que puede estar mal en cualquier categoría
+  // nueva que no probamos).
   function dedupeByLabel(list) {
-    const seenLabels = new Set();
-    const seenValues = new Set();
+    const firstByLabel = new Map();
+    const firstByValue = new Map();
     const seenLabelValue = new Set();
     const out = [];
     for (const attr of list) {
@@ -281,16 +289,29 @@
         const labelValueKey = labelKey + "|" + valueKey;
         if (seenLabelValue.has(labelValueKey)) continue;
         seenLabelValue.add(labelValueKey);
-        seenLabels.add(labelKey);
         out.push(attr);
         continue;
       }
       const exemptFromValueDedup = VALUE_DEDUP_EXEMPT_LABELS.includes(labelKey);
-      if (seenLabels.has(labelKey)) continue;
-      if (!exemptFromValueDedup && isDistinctiveValue(attr.value) && seenValues.has(valueKey)) continue;
-      seenLabels.add(labelKey);
-      if (!exemptFromValueDedup && isDistinctiveValue(attr.value)) seenValues.add(valueKey);
-      out.push(attr);
+      const sameLabelAs = firstByLabel.get(labelKey);
+      const sameValueAs =
+        !exemptFromValueDedup && isDistinctiveValue(attr.value) ? firstByValue.get(valueKey) : null;
+      const duplicateOf = sameLabelAs || sameValueAs;
+      if (!firstByLabel.has(labelKey)) firstByLabel.set(labelKey, attr);
+      if (!exemptFromValueDedup && isDistinctiveValue(attr.value) && !firstByValue.has(valueKey)) {
+        firstByValue.set(valueKey, attr);
+      }
+      if (duplicateOf) {
+        out.push({
+          ...attr,
+          possibleDuplicate: true,
+          duplicateReason: sameLabelAs
+            ? `Ya hay otro atributo "${attr.label}" más arriba.`
+            : `Mismo valor que "${duplicateOf.label}".`,
+        });
+      } else {
+        out.push(attr);
+      }
     }
     return out;
   }
@@ -385,6 +406,17 @@
     text.appendChild(labelEl);
     text.appendChild(valueEl);
 
+    // Ver dedupeByLabel: esto NO se descarta solo, se ofrece igual
+    // (tildado) con un aviso — la decisión de si es o no el mismo dato
+    // queda en manos de quien copia, no de la heurística.
+    if (attr.possibleDuplicate) {
+      const warn = document.createElement("div");
+      warn.style.cssText =
+        "margin-top:3px;font-size:11px;color:#8a5a00;background:#fff7e6;border:1px solid #f1e2bd;border-radius:5px;padding:3px 6px;display:inline-block";
+      warn.textContent = "⚠ Posible repetido — " + attr.duplicateReason;
+      text.appendChild(warn);
+    }
+
     row.appendChild(cb);
     row.appendChild(text);
     list.appendChild(row);
@@ -408,7 +440,13 @@
       status.textContent = "Seleccioná al menos un atributo.";
       return;
     }
-    const payload = JSON.stringify({ v: 1, source: location.href, attributes: selected });
+    // Solo label/value viajan al portapapeles — possibleDuplicate y
+    // duplicateReason son detalle del picker, "MLF Pegar" no los usa.
+    const payload = JSON.stringify({
+      v: 1,
+      source: location.href,
+      attributes: selected.map(({ label, value, multiValue }) => ({ label, value, multiValue })),
+    });
     try {
       await navigator.clipboard.writeText(payload);
       status.textContent = `Copiado (${selected.length}). Andá a la otra página y usá el bookmarklet "MLF Pegar".`;

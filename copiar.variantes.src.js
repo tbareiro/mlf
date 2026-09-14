@@ -152,9 +152,13 @@
 
   const VALUE_DEDUP_EXEMPT_LABELS = ["marca", "fabricante"];
 
+  // Ver copiar.src.js: en vez de descartar el candidato repetido en
+  // silencio (nunca llegaba ni al picker), se ofrece igual con un aviso
+  // de "posible repetido" — tildado por default, la decisión final queda
+  // en manos de quien copia.
   function dedupeByLabel(list) {
-    const seenLabels = new Set();
-    const seenValues = new Set();
+    const firstByLabel = new Map();
+    const firstByValue = new Map();
     const seenLabelValue = new Set();
     const out = [];
     for (const attr of list) {
@@ -164,16 +168,29 @@
         const labelValueKey = labelKey + "|" + valueKey;
         if (seenLabelValue.has(labelValueKey)) continue;
         seenLabelValue.add(labelValueKey);
-        seenLabels.add(labelKey);
         out.push(attr);
         continue;
       }
       const exemptFromValueDedup = VALUE_DEDUP_EXEMPT_LABELS.includes(labelKey);
-      if (seenLabels.has(labelKey)) continue;
-      if (!exemptFromValueDedup && isDistinctiveValue(attr.value) && seenValues.has(valueKey)) continue;
-      seenLabels.add(labelKey);
-      if (!exemptFromValueDedup && isDistinctiveValue(attr.value)) seenValues.add(valueKey);
-      out.push(attr);
+      const sameLabelAs = firstByLabel.get(labelKey);
+      const sameValueAs =
+        !exemptFromValueDedup && isDistinctiveValue(attr.value) ? firstByValue.get(valueKey) : null;
+      const duplicateOf = sameLabelAs || sameValueAs;
+      if (!firstByLabel.has(labelKey)) firstByLabel.set(labelKey, attr);
+      if (!exemptFromValueDedup && isDistinctiveValue(attr.value) && !firstByValue.has(valueKey)) {
+        firstByValue.set(valueKey, attr);
+      }
+      if (duplicateOf) {
+        out.push({
+          ...attr,
+          possibleDuplicate: true,
+          duplicateReason: sameLabelAs
+            ? `Ya hay otro atributo "${attr.label}" más arriba.`
+            : `Mismo valor que "${duplicateOf.label}".`,
+        });
+      } else {
+        out.push(attr);
+      }
     }
     return out;
   }
@@ -306,43 +323,75 @@
   const MAX_VARIANTS = 30; // tope de seguridad para no recorrer combinaciones enormes
 
   /**
-   * Recorre SOLO las combinaciones habilitadas de todos los ejes (ver
-   * nota arriba) y devuelve un array {label, selected, attributes}. Al
-   * final deja la publicación de vuelta en la combinación original.
-   * Devuelve null si no hay ningún eje con más de una opción — el
-   * llamador cae al comportamiento de "Copiar" normal en ese caso.
+   * Producto cartesiano de las opciones de cada eje: [["Rojo","Azul"],["4
+   * GB","8 GB"]] -> [["Rojo","4 GB"],["Rojo","8 GB"],["Azul","4
+   * GB"],["Azul","8 GB"]]. Se prueban TODAS estas combinaciones (no solo
+   * las que ML marca disponibles en el estado actual) porque cuál está
+   * disponible depende del resto de los ejes: "Azul" puede figurar
+   * deshabilitado mientras la RAM esté en 4 GB pero ser válido en 8 GB —
+   * si esto se decidiera antes de tocar la RAM, "Azul" nunca se
+   * recorrería. Ver verificación posterior en collectAllVariants.
+   */
+  function cartesianProduct(arrays) {
+    return arrays.reduce((acc, arr) => acc.flatMap((prefix) => arr.map((v) => [...prefix, v])), [[]]);
+  }
+
+  /**
+   * Recorre TODAS las combinaciones posibles entre los ejes detectados
+   * (Color x Memoria RAM x ...) y devuelve un array {label, selected,
+   * attributes} con solo las que realmente existen. No hay forma de saber
+   * de antemano cuáles son válidas (depende de cómo estén combinados los
+   * demás ejes en cada momento), así que se prueba cada combinación del
+   * producto cartesiano completo: se clickea cada eje en orden y, si al
+   * terminar la selección real coincide exactamente con lo que se quería
+   * (ningún eje quedó pisado por otra oferta), se guarda como variante
+   * válida — si no coincide, esa combinación no existe y se descarta sin
+   * registrar nada. Al final deja la publicación de vuelta en la
+   * combinación original. Devuelve null si no hay ningún eje con más de
+   * una opción — el llamador cae al comportamiento de "Copiar" normal.
    */
   async function collectAllVariants() {
     const initialAxes = queryAxisGroups();
     if (!initialAxes.length) return null;
 
     const axisNames = initialAxes.map((a) => a.axisName);
+    const axisLabelLists = initialAxes.map((a) => a.options.map((o) => o.label));
     const originalSelection = initialAxes.map((a) => a.options.find((o) => o.selected)?.label);
 
+    let candidates = cartesianProduct(axisLabelLists);
+    // Tope de seguridad: con ejes grandes (o 3+ ejes) el producto cartesiano
+    // puede crecer mucho — se recorta a las primeras MAX_VARIANTS
+    // combinaciones en vez de tardar minutos clickeando cientos de ellas.
+    if (candidates.length > MAX_VARIANTS) candidates = candidates.slice(0, MAX_VARIANTS);
+
     const variants = [];
+    const seenFinal = new Set();
 
-    async function recurse(axisIdx, chosenLabels) {
-      if (variants.length >= MAX_VARIANTS) return;
-      if (axisIdx >= axisNames.length) {
-        variants.push({
-          label: chosenLabels.join(" · "),
-          selected: chosenLabels.every((l, i) => l === originalSelection[i]),
-          attributes: extractAllForCurrentState(),
-        });
-        return;
+    for (const candidate of candidates) {
+      for (let i = 0; i < axisNames.length; i++) {
+        await clickAxisOption(axisNames[i], candidate[i]);
       }
-      const axisName = axisNames[axisIdx];
-      const axis = queryAxisGroups().find((a) => a.axisName === axisName);
-      if (!axis) return;
-      for (const opt of axis.options) {
-        if (opt.disabled) continue; // combinación no disponible — no se clickea
-        if (variants.length >= MAX_VARIANTS) return;
-        await clickAxisOption(axisName, opt.label);
-        await recurse(axisIdx + 1, [...chosenLabels, opt.label]);
-      }
+      // Verifica que la combinación pedida haya quedado realmente
+      // seleccionada tal cual — si ML pisó algún eje (ej. cambió la RAM
+      // sola al elegir un color que no viene en la RAM actual), esta
+      // combinación puntual no existe: se descarta sin registrar nada
+      // (evita guardar datos de una combinación distinta con la etiqueta
+      // equivocada).
+      const finalAxes = queryAxisGroups();
+      const finalSelection = axisNames.map(
+        (name) => finalAxes.find((a) => a.axisName === name)?.options.find((o) => o.selected)?.label
+      );
+      const matches = finalSelection.every((v, i) => v === candidate[i]);
+      if (!matches) continue;
+      const key = finalSelection.join("|");
+      if (seenFinal.has(key)) continue;
+      seenFinal.add(key);
+      variants.push({
+        label: finalSelection.join(" · "),
+        selected: finalSelection.every((v, i) => v === originalSelection[i]),
+        attributes: extractAllForCurrentState(),
+      });
     }
-
-    await recurse(0, []);
 
     for (let i = 0; i < axisNames.length; i++) {
       if (originalSelection[i]) await clickAxisOption(axisNames[i], originalSelection[i]);
@@ -410,6 +459,13 @@
       valueEl.textContent = attr.value.length > 400 ? attr.value.slice(0, 400) + "…" : attr.value;
       text.appendChild(labelEl);
       text.appendChild(valueEl);
+      if (attr.possibleDuplicate) {
+        const warn = document.createElement("div");
+        warn.style.cssText =
+          "margin-top:3px;font-size:11px;color:#8a5a00;background:#fff7e6;border:1px solid #f1e2bd;border-radius:5px;padding:3px 6px;display:inline-block";
+        warn.textContent = "⚠ Posible repetido — " + attr.duplicateReason;
+        text.appendChild(warn);
+      }
       row.appendChild(cb);
       row.appendChild(text);
       list.appendChild(row);
@@ -431,7 +487,11 @@
         status.textContent = "Seleccioná al menos un atributo.";
         return;
       }
-      const payload = JSON.stringify({ v: 1, source: location.href, attributes: selected });
+      const payload = JSON.stringify({
+        v: 1,
+        source: location.href,
+        attributes: selected.map(({ label, value, multiValue }) => ({ label, value, multiValue })),
+      });
       try {
         await navigator.clipboard.writeText(payload);
         status.textContent = `Copiado (${selected.length}). Andá a la otra página y usá "MLF Pegar".`;
@@ -499,6 +559,13 @@
       valueEl.textContent = attr.value.length > 400 ? attr.value.slice(0, 400) + "…" : attr.value;
       text.appendChild(labelEl);
       text.appendChild(valueEl);
+      if (attr.possibleDuplicate) {
+        const warn = document.createElement("div");
+        warn.style.cssText =
+          "margin-top:3px;font-size:11px;color:#8a5a00;background:#fff7e6;border:1px solid #f1e2bd;border-radius:5px;padding:3px 6px;display:inline-block";
+        warn.textContent = "⚠ Posible repetido — " + attr.duplicateReason;
+        text.appendChild(warn);
+      }
       row.appendChild(cb);
       row.appendChild(text);
       list.appendChild(row);
@@ -528,12 +595,19 @@
   copyBtn.style.cssText =
     "width:100%;padding:8px 10px;background:#3483fa;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer";
 
+  // Solo label/value/multiValue viajan al portapapeles — possibleDuplicate
+  // y duplicateReason son detalle del picker, "MLF Pegar"/"Pegar Variante"
+  // no los usan.
+  function stripPickerFields({ label, value, multiValue }) {
+    return { label, value, multiValue };
+  }
+
   copyBtn.onclick = async () => {
     const chosenVariants = groups
       .map((g) => ({
         label: g.label,
         selected: g.selected,
-        attributes: g.attrRows.filter(({ cb }) => cb.checked).map(({ attr }) => attr),
+        attributes: g.attrRows.filter(({ cb }) => cb.checked).map(({ attr }) => stripPickerFields(attr)),
       }))
       .filter((v) => v.attributes.length);
 
