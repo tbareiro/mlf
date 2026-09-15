@@ -1,9 +1,14 @@
-# Build output — regenerado por `node build.js` (ver README).
-# Se versiona el .src.js de cada bookmarklet; estos son el resultado
-# compilado que index.html carga en producción.
+# Build output — regenerado en el deploy por `node build-all.js` (ver
+# vercel.json/package.json). Se versiona el .src.js de cada bookmarklet;
+# estos son el resultado compilado que index.html carga en producción.
 *.min.js
 *.url.js
 *.url.txt
+
+# Excepción: pegar.comparator no tiene .src.js todavía (se armó a partir
+# de un build ya minificado que pasaron en otro chat) — no hay de dónde
+# regenerarlo, así que se versiona directo.
+!pegar.comparator.url.js
 
 # Prototipos viejos de la página, ya reemplazados por index.html.
 artifact.html

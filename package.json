@@ -1,0 +1,10 @@
+{
+  "name": "mlf-bookmarklets",
+  "private": true,
+  "scripts": {
+    "vercel-build": "node build-all.js"
+  },
+  "devDependencies": {
+    "terser": "^5.51.2"
+  }
+}
