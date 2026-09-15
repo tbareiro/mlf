@@ -320,6 +320,20 @@
     return true;
   }
 
+  /**
+   * Marca como scope:"child" los atributos cuyo label coincide con el
+   * nombre de un eje de variación (ej. "Color", "Memoria RAM") — son el
+   * dato que efectivamente cambia de una variante a otra y la convierte en
+   * "otra" (misma idea que copiar.comparator.src.js con Padre/Hijo). Todo
+   * lo demás queda sin scope (parent): se repite igual en cada variante.
+   */
+  function tagAxisScope(attrs, axisNames) {
+    const axisKeys = new Set(axisNames.map((n) => n.trim().toLowerCase()));
+    return attrs.map((attr) =>
+      axisKeys.has(attr.label.trim().toLowerCase()) ? { ...attr, scope: "child" } : attr
+    );
+  }
+
   const MAX_VARIANTS = 30; // tope de seguridad para no recorrer combinaciones enormes
 
   /**
@@ -389,7 +403,12 @@
       variants.push({
         label: finalSelection.join(" · "),
         selected: finalSelection.every((v, i) => v === originalSelection[i]),
-        attributes: extractAllForCurrentState(),
+        // Los atributos cuyo label coincide con el nombre de un eje (ej.
+        // "Color") son justo lo que hace a esta variante distinta de las
+        // demás — se marcan scope:"child" (misma convención que
+        // copiar.comparator.src.js) para poder distinguirlos en el picker;
+        // todo lo demás es "parent" (se repite igual en cada variante).
+        attributes: tagAxisScope(extractAllForCurrentState(), axisNames),
       });
     }
 
@@ -401,6 +420,14 @@
   }
 
   // --- UI --------------------------------------------------------------
+  //
+  // Antes esto SIEMPRE recorría todas las combinaciones apenas corrías el
+  // bookmarklet, aunque solo quisieras copiar la variante que ya tenías
+  // abierta — clickeaba de más (cambiando precio/stock momentáneamente de
+  // paso, ver collectAllVariants) para terminar descartando casi todo en
+  // el picker. Ahora, si hay ejes de variación, primero se pregunta qué
+  // se quiere: solo la variante actual (sin clickear nada) o recorrerlas
+  // todas (comportamiento de antes).
 
   const overlay = document.createElement("div");
   overlay.id = OVERLAY_ID;
@@ -415,22 +442,124 @@
   const header = document.createElement("div");
   header.style.cssText =
     "display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600";
-  header.textContent = "MLF — buscando variantes…";
+  header.textContent = "MLF — Copiar Variantes";
   const closeBtn = document.createElement("button");
   closeBtn.textContent = "✕";
   closeBtn.style.cssText = "border:none;background:none;cursor:pointer;font-size:14px;color:#6b7280";
   closeBtn.onclick = () => overlay.remove();
   header.appendChild(closeBtn);
   overlay.appendChild(header);
+
+  const body = document.createElement("div");
+  body.style.cssText = "flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0";
+  overlay.appendChild(body);
   document.body.appendChild(overlay);
 
-  const variants = await collectAllVariants();
+  function clearBody() {
+    body.innerHTML = "";
+  }
 
-  // --- Caso simple: sin variantes que recorrer, comportamiento idéntico
-  // a copiar.src.js (payload v1). ---------------------------------------
-  if (!variants) {
-    const attributes = extractAllForCurrentState();
+  let rowIdSeq = 0;
+
+  /**
+   * Una fila editable de atributo (checkbox + nombre + valor editable) —
+   * mismo mecanismo que copiar.src.js: el checkbox se asocia al nombre por
+   * id/for (nunca envuelve el valor en un <label>, eso lo destildaría al
+   * clickear para editar) y copyBtn.onclick lee el texto ACTUAL del
+   * valueEl, no attr.value, así se puede corregir a mano antes de copiar.
+   * defaultChecked controla el estado inicial del checkbox.
+   */
+  function buildAttrRow(attr, defaultChecked) {
+    const row = document.createElement("div");
+    row.style.cssText =
+      "display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid #f1f2f4";
+
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.id = OVERLAY_ID + "-cb-" + rowIdSeq++;
+    cb.checked = defaultChecked;
+    cb.style.cssText = "margin-top:2px;cursor:pointer;flex:0 0 auto";
+
+    const text = document.createElement("div");
+    text.style.cssText = "min-width:0;flex:1";
+    const labelEl = document.createElement("label");
+    labelEl.htmlFor = cb.id;
+    labelEl.style.cssText = "font-weight:600;display:flex;align-items:center;gap:6px;cursor:pointer";
+    labelEl.textContent = attr.label;
+    // Las filas "child" son justo lo que distingue a esta variante de las
+    // demás (ver tagAxisScope) — se marcan aparte para que se note de un
+    // vistazo cuál es el dato que cambia.
+    if (attr.scope === "child") {
+      const badge = document.createElement("span");
+      badge.style.cssText =
+        "font:600 9.5px/1 -apple-system,Segoe UI,Roboto,Arial,sans-serif;letter-spacing:.03em;text-transform:uppercase;" +
+        "color:#2f5fe0;background:#e9edfc;padding:2px 6px;border-radius:9px";
+      badge.textContent = "distingue variante";
+      labelEl.appendChild(badge);
+    }
+    const valueEl = document.createElement("div");
+    valueEl.contentEditable = "true";
+    valueEl.spellcheck = false;
+    valueEl.style.cssText =
+      "color:#374151;word-break:break-word;max-height:6em;overflow-y:auto;cursor:text;" +
+      "border:1px solid transparent;border-radius:4px;padding:2px 4px;margin:2px -4px 0;outline:none";
+    valueEl.textContent = attr.value;
+    valueEl.addEventListener("focus", () => {
+      valueEl.style.borderColor = "#3483fa";
+      valueEl.style.background = "#f7f9fc";
+    });
+    valueEl.addEventListener("blur", () => {
+      valueEl.style.borderColor = "transparent";
+      valueEl.style.background = "transparent";
+    });
+    text.appendChild(labelEl);
+    text.appendChild(valueEl);
+
+    if (attr.possibleDuplicate) {
+      const warn = document.createElement("div");
+      warn.style.cssText =
+        "margin-top:3px;font-size:11px;color:#8a5a00;background:#fff7e6;border:1px solid #f1e2bd;border-radius:5px;padding:3px 6px;display:inline-block";
+      warn.textContent = "⚠ Posible repetido — " + attr.duplicateReason;
+      text.appendChild(warn);
+    }
+
+    row.appendChild(cb);
+    row.appendChild(text);
+    return { row, cb, valueEl };
+  }
+
+  async function copyPayload(payload, status, count) {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload));
+      status.textContent = `Copiado (${count}). Andá a la otra página y usá "MLF Pegar".`;
+    } catch (err) {
+      const ta = document.createElement("textarea");
+      ta.value = JSON.stringify(payload);
+      ta.style.cssText = "position:fixed;top:-1000px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      status.textContent = ok
+        ? `Copiado (${count}). Andá a la otra página y usá "MLF Pegar".`
+        : "No se pudo copiar. Probá seleccionar manualmente.";
+    }
+  }
+
+  // --- Picker de un solo set de atributos: sin ejes de variación, o
+  // "copiar solo esta variante" — payload v1, mismo formato que
+  // copiar.src.js/"MLF Pegar" de siempre. -------------------------------
+  function renderSinglePicker(attributes, noticeText) {
+    clearBody();
     header.textContent = "MLF — Atributos (" + attributes.length + ")";
+
+    if (noticeText) {
+      const notice = document.createElement("div");
+      notice.style.cssText =
+        "padding:8px 12px;background:#e9edfc;color:#2f5fe0;font-size:12px;line-height:1.4;border-bottom:1px solid #d7defb";
+      notice.textContent = noticeText;
+      body.appendChild(notice);
+    }
 
     const list = document.createElement("div");
     list.style.cssText = "overflow-y:auto;padding:4px 8px;flex:1";
@@ -440,37 +569,9 @@
       empty.textContent = "No se encontraron atributos en esta página.";
       list.appendChild(empty);
     }
-    const checkboxes = [];
-    attributes.forEach((attr, idx) => {
-      const row = document.createElement("label");
-      row.style.cssText =
-        "display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid #f1f2f4;cursor:pointer";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !attr.multiValue;
-      cb.dataset.idx = String(idx);
-      checkboxes.push(cb);
-      const text = document.createElement("div");
-      const labelEl = document.createElement("div");
-      labelEl.style.cssText = "font-weight:600";
-      labelEl.textContent = attr.label;
-      const valueEl = document.createElement("div");
-      valueEl.style.cssText = "color:#374151;word-break:break-word;max-height:4.5em;overflow-y:auto";
-      valueEl.textContent = attr.value.length > 400 ? attr.value.slice(0, 400) + "…" : attr.value;
-      text.appendChild(labelEl);
-      text.appendChild(valueEl);
-      if (attr.possibleDuplicate) {
-        const warn = document.createElement("div");
-        warn.style.cssText =
-          "margin-top:3px;font-size:11px;color:#8a5a00;background:#fff7e6;border:1px solid #f1e2bd;border-radius:5px;padding:3px 6px;display:inline-block";
-        warn.textContent = "⚠ Posible repetido — " + attr.duplicateReason;
-        text.appendChild(warn);
-      }
-      row.appendChild(cb);
-      row.appendChild(text);
-      list.appendChild(row);
-    });
-    overlay.appendChild(list);
+    const rows = attributes.map((attr) => buildAttrRow(attr, !attr.multiValue));
+    rows.forEach(({ row }) => list.appendChild(row));
+    body.appendChild(list);
 
     const footer = document.createElement("div");
     footer.style.cssText = "padding:8px 12px 12px;border-top:1px solid #e5e7eb";
@@ -482,167 +583,187 @@
     copyBtn.style.cssText =
       "width:100%;padding:8px 10px;background:#3483fa;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer";
     copyBtn.onclick = async () => {
-      const selected = checkboxes.filter((cb) => cb.checked).map((cb) => attributes[Number(cb.dataset.idx)]);
-      if (!selected.length) {
-        status.textContent = "Seleccioná al menos un atributo.";
+      const selectedAttrs = [];
+      rows.forEach(({ cb, valueEl }, idx) => {
+        if (!cb.checked) return;
+        const value = valueEl.textContent.trim();
+        if (!value) return;
+        selectedAttrs.push({ ...attributes[idx], value });
+      });
+      if (!selectedAttrs.length) {
+        status.textContent = "Seleccioná al menos un atributo con un valor.";
         return;
       }
-      const payload = JSON.stringify({
+      const payload = {
         v: 1,
         source: location.href,
-        attributes: selected.map(({ label, value, multiValue }) => ({ label, value, multiValue })),
-      });
-      try {
-        await navigator.clipboard.writeText(payload);
-        status.textContent = `Copiado (${selected.length}). Andá a la otra página y usá "MLF Pegar".`;
-      } catch (err) {
-        const ta = document.createElement("textarea");
-        ta.value = payload;
-        ta.style.cssText = "position:fixed;top:-1000px";
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand("copy");
-        ta.remove();
-        status.textContent = ok
-          ? `Copiado (${selected.length}). Andá a la otra página y usá "MLF Pegar".`
-          : "No se pudo copiar. Probá seleccionar manualmente.";
-      }
+        attributes: selectedAttrs.map(({ label, value, multiValue, scope }) => ({ label, value, multiValue, scope })),
+      };
+      await copyPayload(payload, status, selectedAttrs.length);
     };
     footer.appendChild(status);
     footer.appendChild(copyBtn);
-    overlay.appendChild(footer);
-    return;
+    body.appendChild(footer);
   }
 
-  // --- Caso con variantes: UI agrupada por variante --------------------
-  header.textContent = `MLF — ${variants.length} variantes`;
+  // --- Picker agrupado por variante: "recorrer todas". Payload v2, igual
+  // formato que antes (attributes = base + variants[]). -----------------
+  function renderGroupedPicker(variants) {
+    clearBody();
+    header.textContent = `MLF — ${variants.length} variantes`;
 
-  const notice = document.createElement("div");
-  notice.style.cssText =
-    "padding:8px 12px;background:#e9edfc;color:#2f5fe0;font-size:12px;line-height:1.4;border-bottom:1px solid #d7defb";
-  notice.textContent =
-    `Se recorrieron ${variants.length} variantes solas (${variants.map((v) => v.label).join(", ")}). ` +
-    `La publicación ya volvió a mostrar la que tenías abierta. Elegí qué incluir de cada una.`;
-  overlay.appendChild(notice);
+    const notice = document.createElement("div");
+    notice.style.cssText =
+      "padding:8px 12px;background:#e9edfc;color:#2f5fe0;font-size:12px;line-height:1.4;border-bottom:1px solid #d7defb";
+    notice.textContent =
+      `Se recorrieron ${variants.length} variantes solas (${variants.map((v) => v.label).join(", ")}). ` +
+      `La publicación ya volvió a mostrar la que tenías abierta. Elegí qué incluir de cada una.`;
+    body.appendChild(notice);
 
-  const list = document.createElement("div");
-  list.style.cssText = "overflow-y:auto;padding:4px 8px;flex:1";
-  overlay.appendChild(list);
+    const list = document.createElement("div");
+    list.style.cssText = "overflow-y:auto;padding:4px 8px;flex:1";
+    body.appendChild(list);
 
-  // groups: [{ label, selected, attrs: [{attr, cb}], groupCb }]
-  const groups = variants.map((variant) => {
-    const groupHeader = document.createElement("div");
-    groupHeader.style.cssText =
-      "display:flex;gap:8px;align-items:center;padding:8px 4px 4px;font-weight:600;border-top:1px solid #e5e7eb;margin-top:4px";
-    const groupCb = document.createElement("input");
-    groupCb.type = "checkbox";
-    groupCb.checked = variant.selected;
-    const groupLabel = document.createElement("span");
-    groupLabel.textContent = variant.label + (variant.selected ? " (la que tenías abierta)" : "");
-    groupHeader.appendChild(groupCb);
-    groupHeader.appendChild(groupLabel);
-    list.appendChild(groupHeader);
+    // groups: [{ label, selected, attrRows: [{attr, cb, valueEl}], groupCb }]
+    const groups = variants.map((variant) => {
+      const groupHeader = document.createElement("div");
+      groupHeader.style.cssText =
+        "display:flex;gap:8px;align-items:center;padding:8px 4px 4px;font-weight:600;border-top:1px solid #e5e7eb;margin-top:4px";
+      const groupCb = document.createElement("input");
+      groupCb.type = "checkbox";
+      groupCb.checked = variant.selected;
+      const groupLabel = document.createElement("span");
+      groupLabel.textContent = variant.label + (variant.selected ? " (la que tenías abierta)" : "");
+      groupHeader.appendChild(groupCb);
+      groupHeader.appendChild(groupLabel);
+      list.appendChild(groupHeader);
 
-    const attrRows = variant.attributes.map((attr) => {
-      const row = document.createElement("label");
-      row.style.cssText =
-        "display:flex;gap:8px;align-items:flex-start;padding:5px 4px 5px 26px;border-bottom:1px solid #f1f2f4;cursor:pointer";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = variant.selected && !attr.multiValue;
-      const text = document.createElement("div");
-      const labelEl = document.createElement("div");
-      labelEl.style.cssText = "font-weight:600";
-      labelEl.textContent = attr.label;
-      const valueEl = document.createElement("div");
-      valueEl.style.cssText = "color:#374151;word-break:break-word;max-height:4.5em;overflow-y:auto";
-      valueEl.textContent = attr.value.length > 400 ? attr.value.slice(0, 400) + "…" : attr.value;
-      text.appendChild(labelEl);
-      text.appendChild(valueEl);
-      if (attr.possibleDuplicate) {
-        const warn = document.createElement("div");
-        warn.style.cssText =
-          "margin-top:3px;font-size:11px;color:#8a5a00;background:#fff7e6;border:1px solid #f1e2bd;border-radius:5px;padding:3px 6px;display:inline-block";
-        warn.textContent = "⚠ Posible repetido — " + attr.duplicateReason;
-        text.appendChild(warn);
+      const attrRows = variant.attributes.map((attr) => {
+        const built = buildAttrRow(attr, variant.selected && !attr.multiValue);
+        built.row.style.paddingLeft = "26px";
+        list.appendChild(built.row);
+        return { attr, cb: built.cb, valueEl: built.valueEl };
+      });
+
+      groupCb.onchange = () => {
+        attrRows.forEach(({ cb }) => (cb.checked = groupCb.checked));
+      };
+
+      if (!variant.attributes.length) {
+        const empty = document.createElement("div");
+        empty.style.cssText = "padding:4px 4px 4px 26px;color:#9aa1ab;font-size:12px";
+        empty.textContent = "Sin atributos detectados para esta variante.";
+        list.appendChild(empty);
       }
-      row.appendChild(cb);
-      row.appendChild(text);
-      list.appendChild(row);
-      return { attr, cb };
+
+      return { label: variant.label, selected: variant.selected, attrRows };
     });
 
-    groupCb.onchange = () => {
-      attrRows.forEach(({ cb }) => (cb.checked = groupCb.checked));
+    const footer = document.createElement("div");
+    footer.style.cssText = "padding:8px 12px 12px;border-top:1px solid #e5e7eb";
+    const status = document.createElement("div");
+    status.style.cssText = "font-size:12px;color:#6b7280;min-height:16px;margin-bottom:6px";
+    const copyBtn = document.createElement("button");
+    copyBtn.textContent = "Copiar seleccionadas";
+    copyBtn.style.cssText =
+      "width:100%;padding:8px 10px;background:#3483fa;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer";
+
+    copyBtn.onclick = async () => {
+      const chosenVariants = groups
+        .map((g) => ({
+          label: g.label,
+          selected: g.selected,
+          attributes: g.attrRows
+            .filter(({ cb }) => cb.checked)
+            .map(({ attr, valueEl }) => {
+              const value = valueEl.textContent.trim();
+              return value ? { ...attr, value } : null;
+            })
+            .filter(Boolean)
+            // Solo label/value/multiValue/scope viajan al portapapeles —
+            // possibleDuplicate y duplicateReason son detalle del picker.
+            .map(({ label, value, multiValue, scope }) => ({ label, value, multiValue, scope })),
+        }))
+        .filter((v) => v.attributes.length);
+
+      if (!chosenVariants.length) {
+        status.textContent = "Seleccioná al menos un atributo con un valor de alguna variante.";
+        return;
+      }
+
+      const base = chosenVariants.find((v) => v.selected) || chosenVariants[0];
+      const payload = {
+        v: 2,
+        source: location.href,
+        attributes: base.attributes, // compat: "MLF Pegar" sin cambios lee esto como siempre
+        variants: chosenVariants,
+      };
+      const totalAttrs = chosenVariants.reduce((n, v) => n + v.attributes.length, 0);
+      await copyPayload(
+        payload,
+        status,
+        `${chosenVariants.length} variante(s), ${totalAttrs} atributo(s)`
+      );
+    };
+    footer.appendChild(status);
+    footer.appendChild(copyBtn);
+    body.appendChild(footer);
+  }
+
+  // --- Elegir qué recorrer, si hay ejes de variación --------------------
+  function renderModeChooser(axes) {
+    header.textContent = "MLF — variantes detectadas";
+    const axisNames = axes.map((a) => a.axisName);
+    const axisSummary = axes.map((a) => `${a.axisName} (${a.options.length})`).join(", ");
+    const totalCombos = axes.reduce((n, a) => n * a.options.length, 1);
+
+    const info = document.createElement("div");
+    info.style.cssText = "padding:12px;font-size:12.5px;color:#374151;line-height:1.5";
+    info.textContent =
+      `Esta publicación varía en: ${axisSummary}. Cada combinación de eso es una variante ` +
+      `distinta (todo lo demás se mantiene igual). ¿Qué querés copiar?`;
+    body.appendChild(info);
+
+    const btnRow = document.createElement("div");
+    btnRow.style.cssText = "padding:0 12px 12px;display:flex;flex-direction:column;gap:8px";
+
+    const btnOne = document.createElement("button");
+    btnOne.textContent = "Copiar solo esta variante (la que tenés abierta)";
+    btnOne.style.cssText =
+      "padding:9px 10px;background:#3483fa;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;text-align:left";
+    btnOne.onclick = () => {
+      const attributes = tagAxisScope(extractAllForCurrentState(), axisNames);
+      renderSinglePicker(attributes);
     };
 
-    if (!variant.attributes.length) {
-      const empty = document.createElement("div");
-      empty.style.cssText = "padding:4px 4px 4px 26px;color:#9aa1ab;font-size:12px";
-      empty.textContent = "Sin atributos detectados para esta variante.";
-      list.appendChild(empty);
-    }
+    const btnAll = document.createElement("button");
+    btnAll.textContent = `Recorrer todas (hasta ${Math.min(totalCombos, MAX_VARIANTS)} combinaciones)`;
+    btnAll.style.cssText =
+      "padding:9px 10px;background:#fff;color:#3483fa;border:1px solid #3483fa;border-radius:6px;font-weight:600;cursor:pointer;text-align:left";
+    btnAll.onclick = async () => {
+      clearBody();
+      header.textContent = "MLF — buscando variantes…";
+      const hint = document.createElement("div");
+      hint.style.cssText = "padding:24px 12px;text-align:center;color:#9aa1ab;font-size:12.5px";
+      hint.textContent = "Recorriendo combinaciones — la página puede parpadear de precio/stock, es esperado.";
+      body.appendChild(hint);
+      const variants = await collectAllVariants();
+      if (!variants) {
+        renderSinglePicker(tagAxisScope(extractAllForCurrentState(), axisNames));
+        return;
+      }
+      renderGroupedPicker(variants);
+    };
 
-    return { label: variant.label, selected: variant.selected, attrRows };
-  });
-
-  const footer = document.createElement("div");
-  footer.style.cssText = "padding:8px 12px 12px;border-top:1px solid #e5e7eb";
-  const status = document.createElement("div");
-  status.style.cssText = "font-size:12px;color:#6b7280;min-height:16px;margin-bottom:6px";
-  const copyBtn = document.createElement("button");
-  copyBtn.textContent = "Copiar seleccionadas";
-  copyBtn.style.cssText =
-    "width:100%;padding:8px 10px;background:#3483fa;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer";
-
-  // Solo label/value/multiValue viajan al portapapeles — possibleDuplicate
-  // y duplicateReason son detalle del picker, "MLF Pegar"/"Pegar Variante"
-  // no los usan.
-  function stripPickerFields({ label, value, multiValue }) {
-    return { label, value, multiValue };
+    btnRow.appendChild(btnOne);
+    btnRow.appendChild(btnAll);
+    body.appendChild(btnRow);
   }
 
-  copyBtn.onclick = async () => {
-    const chosenVariants = groups
-      .map((g) => ({
-        label: g.label,
-        selected: g.selected,
-        attributes: g.attrRows.filter(({ cb }) => cb.checked).map(({ attr }) => stripPickerFields(attr)),
-      }))
-      .filter((v) => v.attributes.length);
-
-    if (!chosenVariants.length) {
-      status.textContent = "Seleccioná al menos un atributo de alguna variante.";
-      return;
-    }
-
-    const base = chosenVariants.find((v) => v.selected) || chosenVariants[0];
-    const payload = JSON.stringify({
-      v: 2,
-      source: location.href,
-      attributes: base.attributes, // compat: "MLF Pegar" sin cambios lee esto como siempre
-      variants: chosenVariants,
-    });
-    const totalAttrs = chosenVariants.reduce((n, v) => n + v.attributes.length, 0);
-    try {
-      await navigator.clipboard.writeText(payload);
-      status.textContent =
-        `Copiado (${chosenVariants.length} variante(s), ${totalAttrs} atributo(s)). ` +
-        `Usá "MLF Pegar" para la primera y "MLF Pegar Variante" para el resto.`;
-    } catch (err) {
-      const ta = document.createElement("textarea");
-      ta.value = payload;
-      ta.style.cssText = "position:fixed;top:-1000px";
-      document.body.appendChild(ta);
-      ta.select();
-      const ok = document.execCommand("copy");
-      ta.remove();
-      status.textContent = ok
-        ? `Copiado (${chosenVariants.length} variante(s)). Usá "MLF Pegar" y "MLF Pegar Variante".`
-        : "No se pudo copiar. Probá seleccionar manualmente.";
-    }
-  };
-  footer.appendChild(status);
-  footer.appendChild(copyBtn);
-  overlay.appendChild(footer);
+  const axes = queryAxisGroups();
+  if (!axes.length) {
+    renderSinglePicker(extractAllForCurrentState());
+  } else {
+    renderModeChooser(axes);
+  }
 })();

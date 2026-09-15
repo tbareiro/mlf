@@ -238,25 +238,46 @@
   }
 
   const checkboxes = [];
+  // Un <div> editable por fila — copyBtn.onclick lee el texto ACTUAL de
+  // acá, no attr.value (ver copiar.src.js, mismo mecanismo).
+  const valueEls = [];
   attributes.forEach((attr, idx) => {
-    const row = document.createElement("label");
+    // NO es un <label> envolviendo toda la fila: eso tilda/destilda el
+    // checkbox con solo clickear el valor para editarlo (ver copiar.src.js).
+    const row = document.createElement("div");
     row.style.cssText =
-      "display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid #f1f2f4;cursor:pointer";
+      "display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid #f1f2f4";
 
     const cb = document.createElement("input");
     cb.type = "checkbox";
+    cb.id = OVERLAY_ID + "-cb-" + idx;
     cb.checked = true;
     cb.dataset.idx = String(idx);
+    cb.style.cssText = "margin-top:2px;cursor:pointer;flex:0 0 auto";
     checkboxes.push(cb);
 
     const text = document.createElement("div");
-    const labelEl = document.createElement("div");
-    labelEl.style.cssText = "font-weight:600";
+    text.style.cssText = "min-width:0;flex:1";
+    const labelEl = document.createElement("label");
+    labelEl.htmlFor = cb.id;
+    labelEl.style.cssText = "font-weight:600;display:block;cursor:pointer";
     labelEl.textContent = attr.label;
     const valueEl = document.createElement("div");
+    valueEl.contentEditable = "true";
+    valueEl.spellcheck = false;
     valueEl.style.cssText =
-      "color:#374151;word-break:break-word;max-height:4.5em;overflow-y:auto";
-    valueEl.textContent = attr.value.length > 400 ? attr.value.slice(0, 400) + "…" : attr.value;
+      "color:#374151;word-break:break-word;max-height:6em;overflow-y:auto;cursor:text;" +
+      "border:1px solid transparent;border-radius:4px;padding:2px 4px;margin:2px -4px 0;outline:none";
+    valueEl.textContent = attr.value;
+    valueEl.addEventListener("focus", () => {
+      valueEl.style.borderColor = "#3483fa";
+      valueEl.style.background = "#f7f9fc";
+    });
+    valueEl.addEventListener("blur", () => {
+      valueEl.style.borderColor = "transparent";
+      valueEl.style.background = "transparent";
+    });
+    valueEls.push(valueEl);
     text.appendChild(labelEl);
     text.appendChild(valueEl);
 
@@ -278,9 +299,15 @@
     "width:100%;padding:8px 10px;background:#3483fa;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer";
 
   copyBtn.onclick = async () => {
-    const selected = checkboxes.filter((cb) => cb.checked).map((cb) => attributes[Number(cb.dataset.idx)]);
+    const selected = checkboxes
+      .filter((cb) => cb.checked)
+      .map((cb) => {
+        const idx = Number(cb.dataset.idx);
+        return { ...attributes[idx], value: valueEls[idx].textContent.trim() };
+      })
+      .filter((attr) => attr.value.length > 0);
     if (!selected.length) {
-      status.textContent = "Seleccioná al menos un atributo.";
+      status.textContent = "Seleccioná al menos un atributo con un valor.";
       return;
     }
     const payload = JSON.stringify({ v: 1, source: location.href, attributes: selected });

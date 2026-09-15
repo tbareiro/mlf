@@ -566,11 +566,19 @@
         </li>
         <li>
           <a id="mlf-copiar-variantes-link" class="beta-link">MLF Copiar Variantes <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Recorre sola todas las variantes de color/diseño y las junta en un solo copiado.</span>
+          <span class="beta-desc">Si hay variantes, primero pregunta: copiar solo la que tenés abierta, o recorrerlas todas y juntarlas en un solo copiado.</span>
         </li>
         <li>
           <a id="mlf-pegar-variante-link" class="beta-link">MLF Pegar Variante <span class="beta-tag">nuevo</span></a>
           <span class="beta-desc">Completa el bloque de una variante nueva, después de que vos clickeaste "Agregar variante" en la herramienta.</span>
+        </li>
+        <li>
+          <a id="mlf-copiar-comparator-link" class="beta-link">Copiar Comparator <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Igual a MLF Copiar pero lee el comparador de fichas (comparator-result) en vez de la página de publicación.</span>
+        </li>
+        <li>
+          <a id="mlf-pegar-comparator-link" class="beta-link">Pegar Comparator <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Igual a MLF Pegar, pensado para usarse junto con "Copiar Comparator".</span>
         </li>
       </ul>
     </details>
@@ -581,12 +589,16 @@
 <script src="copiar.beta.url.js"></script>
 <script src="copiar.variantes.url.js"></script>
 <script src="pegar.variante.url.js"></script>
+<script src="copiar.comparator.url.js"></script>
+<script src="pegar.comparator.url.js"></script>
 <script>
   document.getElementById("mlf-copiar-link").href = window.MLF_COPIAR_HREF;
   document.getElementById("mlf-pegar-link").href = window.MLF_PEGAR_HREF;
   document.getElementById("mlf-copiar-beta-link").href = window.MLF_COPIAR_BETA_HREF;
   document.getElementById("mlf-copiar-variantes-link").href = window.MLF_COPIAR_VARIANTES_HREF;
   document.getElementById("mlf-pegar-variante-link").href = window.MLF_PEGAR_VARIANTE_HREF;
+  document.getElementById("mlf-copiar-comparator-link").href = window.MLF_COPIAR_COMPARATOR_HREF;
+  document.getElementById("mlf-pegar-comparator-link").href = window.MLF_PEGAR_COMPARATOR_HREF;
 </script>
 
 <script>
