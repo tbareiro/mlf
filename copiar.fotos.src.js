@@ -1,11 +1,11 @@
 // MLF - Bookmarklet "Copiar Fotos" (correr parado en una página de producto
-// de ML). Junta las URLs de las fotos de la galería (la versión de mayor
-// resolución de cada una, no la miniatura) y las copia como JSON al
-// portapapeles. "Pegar Fotos" las descarga del lado de la herramienta
-// interna y las carga todas de una — el puente es texto (URLs), nunca la
-// imagen en sí, así que no depende de escribir binario al portapapeles del
-// sistema desde esta página (ver nota en pegar.fotos.src.js sobre por qué
-// eso se probó y falló acá).
+// de ML, o en el carrusel de imágenes de la herramienta interna). Junta las
+// URLs de las fotos (la versión de mayor resolución de cada una, no la
+// miniatura chica) y las copia como JSON al portapapeles. "Pegar Fotos" las
+// descarga del lado de la herramienta interna y las carga todas de una — el
+// puente es texto (URLs), nunca la imagen en sí, así que no depende de
+// escribir binario al portapapeles del sistema desde esta página (ver nota
+// en pegar.fotos.src.js sobre por qué eso se probó y falló acá).
 
 (function () {
   "use strict";
@@ -14,12 +14,34 @@
   document.getElementById(OVERLAY_ID)?.remove();
 
   /**
-   * Las miniaturas de la galería (.ui-pdp-gallery__figure) apuntan a una
-   * imagen chica por defecto — la versión grande vive en el atributo
+   * Carrusel de imágenes de la herramienta interna (img-carousel__main +
+   * img-carousel__thumb-img): la imagen grande de arriba es SIEMPRE una
+   * (la miniatura seleccionada, ya sea) de las de abajo — no una foto
+   * distinta. Si se leyeran las dos listas, la seleccionada quedaría
+   * copiada dos veces. Por eso esto lee SOLO las miniaturas (que, en este
+   * carrusel, ya apuntan a la imagen en su resolución completa — no hace
+   * falta buscar una versión más grande aparte).
+   */
+  function extractFromInternalCarousel() {
+    const thumbs = document.querySelectorAll(".img-carousel__thumb-img");
+    const out = [];
+    const seen = new Set();
+    thumbs.forEach((img) => {
+      const url = img.src;
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      out.push({ url, thumb: url });
+    });
+    return out;
+  }
+
+  /**
+   * Las miniaturas de la galería de ML (.ui-pdp-gallery__figure) apuntan a
+   * una imagen chica por defecto — la versión grande vive en el atributo
    * data-zoom de un ancestro cercano. Se prueba esa primero y se cae a
    * img.src solo si no está.
    */
-  function extractGalleryImages() {
+  function extractFromMLGallery() {
     const figs = document.querySelectorAll(".ui-pdp-gallery__figure, [class*='gallery__figure']");
     const out = [];
     const seen = new Set();
@@ -33,6 +55,25 @@
       out.push({ url, thumb: img.src || url });
     });
     return out;
+  }
+
+  /**
+   * Si no hay miniaturas de ningún lado pero sí una imagen grande sola
+   * (ej. el carrusel interno con una sola foto todavía, sin miniaturas
+   * montadas), se usa esa — mejor una foto que ninguna.
+   */
+  function extractFallbackSingleImage() {
+    const main = document.querySelector(".img-carousel__main");
+    if (!main || !main.src) return [];
+    return [{ url: main.src, thumb: main.src }];
+  }
+
+  function extractGalleryImages() {
+    const fromCarousel = extractFromInternalCarousel();
+    if (fromCarousel.length) return fromCarousel;
+    const fromGallery = extractFromMLGallery();
+    if (fromGallery.length) return fromGallery;
+    return extractFallbackSingleImage();
   }
 
   const images = extractGalleryImages();

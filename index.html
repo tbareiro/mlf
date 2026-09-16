@@ -419,8 +419,10 @@
         <div class="chrome-address"></div>
       </div>
       <div class="bookmarks-bar">
-        <a class="bk" id="mlf-copiar-link"><span class="glyph">↳</span>MLF Copiar</a>
-        <a class="bk" id="mlf-pegar-link"><span class="glyph">↲</span>MLF Pegar</a>
+        <a class="bk" id="mlf-copiar-comparator-link"><span class="glyph">↳</span>Copiar Comparator</a>
+        <a class="bk" id="mlf-pegar-comparator-link"><span class="glyph">↲</span>Pegar Comparator</a>
+        <a class="bk" id="mlf-copiar-link"><span class="glyph">↳</span>Copiar Item</a>
+        <a class="bk" id="mlf-pegar-link"><span class="glyph">↲</span>Pegar Item</a>
       </div>
     </div>
     <p class="drag-hint">arrastrá cada botón de acá arriba directo a tu barra de favoritos (Ctrl+Shift+B si no la tenés visible)</p>
@@ -503,7 +505,7 @@
       <li>
         <span class="step-num">01</span>
         <div class="step-body">
-          <div><b>Abrí la publicación</b> y clickeá <b>MLF Copiar</b>.</div>
+          <div><b>Abrí la publicación</b> y clickeá <b>Copiar Item</b> (o <b>Copiar Comparator</b> si estás en el comparador de fichas).</div>
           <div class="sub">Evita duplicar el mismo dato con distinto nombre, y separa renglones combinados ("Ancho x Alto: 31 cm x 6 cm") en atributos por separado.</div>
         </div>
       </li>
@@ -516,7 +518,7 @@
       <li>
         <span class="step-num">03</span>
         <div class="step-body">
-          <div><b>Andá a la ficha de carga</b> y clickeá <b>MLF Pegar</b>.</div>
+          <div><b>Andá a la ficha de carga</b> y clickeá <b>Pegar Item</b> (o <b>Pegar Comparator</b>).</div>
           <div class="sub">Entiende texto, dropdowns Andes (simples y multi-selección, con opción de agregar), toggles Sí/No, editores enriquecidos y campos "número + unidad". Sin portapapeles por script, te pide pegar con Ctrl+V.</div>
         </div>
       </li>
@@ -543,7 +545,7 @@
       <li>No clickea Guardar, Finalizar ni Enviar — eso queda siempre en tu mano.</li>
       <li>No corre solo: cada paso empieza con un click tuyo, nunca con un timer.</li>
       <li>No manda datos a ningún servidor propio — el único destino es el formulario que ya tenés en pantalla.</li>
-      <li>No copia fotos en MLF Copiar/Pegar (los de producción) — eso vive, en prueba, en "Copiar Fotos"/"Pegar Fotos" dentro de Builds de prueba.</li>
+      <li>No copia fotos en los bookmarklets de arriba (producción) — eso vive, en prueba, en "Copiar Fotos"/"Pegar Fotos" dentro de Builds de prueba.</li>
       <li>No copia GTIN — MercadoLibre no lo muestra en la ficha de la publicación. Sí copia el ISBN cuando está visible.</li>
       <li>No confía en silencio: cuando completa algo por aproximación, o cuando agrega una opción nueva a una lista, lo marca aparte en vez de darlo por bueno — igual conviene revisar, sobre todo en listas cerradas (ej. un pedal cargado como "Guitarra" puede pegarse como "Guitarra acústica").</li>
       <li>Solo lleva la información de un lado al otro — el análisis y la carga fina siguen haciéndose a mano desde BC y el sitio.</li>
@@ -552,12 +554,12 @@
   </section>
 
   <footer>
-    MLF · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
+    MLF · bookmarklets/copiar.comparator.src.js · bookmarklets/pegar.comparator.src.js · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
     <details class="beta-details">
       <summary>Builds de prueba</summary>
       <p class="beta-warn">
         Sin confirmar todavía contra la herramienta interna real (bloqueada por VPN) —
-        probadas contra el flujo público equivalente. No reemplazan a MLF Copiar/Pegar de arriba.
+        probadas contra el flujo público equivalente. No reemplazan a los bookmarklets de arriba.
       </p>
       <ul class="beta-list">
         <li>
@@ -571,14 +573,6 @@
         <li>
           <a id="mlf-pegar-variante-link" class="beta-link">MLF Pegar Variante <span class="beta-tag">nuevo</span></a>
           <span class="beta-desc">Completa el bloque de una variante nueva, después de que vos clickeaste "Agregar variante" en la herramienta.</span>
-        </li>
-        <li>
-          <a id="mlf-copiar-comparator-link" class="beta-link">Copiar Comparator <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Igual a MLF Copiar, pero si hay comparador de fichas (comparator-result) en pantalla lo lee de ahí en vez de la publicación, y marca aparte los atributos "Identificadores Hijo/de Producto" — los que distinguen la variante. Si no hay comparador, se comporta igual que MLF Copiar.</span>
-        </li>
-        <li>
-          <a id="mlf-pegar-comparator-link" class="beta-link">Pegar Comparator <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Como MLF Pegar, pero además matchea campos por id/name (no solo por texto) y completa primero los atributos comunes — recién después los que distinguen la variante (ej. Color). Pensado para usarse junto con "Copiar Comparator".</span>
         </li>
         <li>
           <a id="mlf-copiar-fotos-link" class="beta-link">Copiar Fotos <span class="beta-tag">nuevo</span></a>
