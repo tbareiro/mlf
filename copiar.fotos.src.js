@@ -29,16 +29,30 @@
   }
 
   /**
-   * Carrusel de imágenes de la herramienta interna (img-carousel__main +
-   * img-carousel__thumb-img): la imagen grande de arriba es SIEMPRE una
-   * (la miniatura seleccionada, ya sea) de las de abajo — no una foto
-   * distinta. Si se leyeran las dos listas, la seleccionada quedaría
-   * copiada dos veces. Por eso esto lee SOLO las miniaturas (que, en este
-   * carrusel, ya apuntan a la imagen en su resolución completa — no hace
-   * falta buscar una versión más grande aparte).
+   * Carrusel de imágenes de la herramienta interna (.img-carousel, con
+   * img-carousel__main + img-carousel__thumbs adentro). En el comparador
+   * hay DOS de estos en la misma página — uno por lado (USER PRODUCT a la
+   * izquierda, PRODUCT/la ficha de catálogo a la derecha) — con las
+   * mismas clases en los dos, así que no alcanza con buscar
+   * ".img-carousel__thumb-img" en toda la página: traía las fotos de los
+   * dos lados mezcladas (bug real reportado: aparecían fotos del producto
+   * de catálogo de la derecha, que no son las que corresponden a esta
+   * publicación). El lado de USER PRODUCT siempre es el primer
+   * ".img-carousel" en el HTML (columna izquierda) — se escanea SOLO
+   * adentro de ese, ignorando cualquier otro carrusel que haya más abajo
+   * en la página.
+   *
+   * Dentro de ese carrusel: la imagen grande de arriba (img-carousel__main)
+   * es SIEMPRE una de las miniaturas de abajo, ya seleccionada — no una
+   * foto distinta. Si se leyeran las dos listas, esa quedaría copiada dos
+   * veces. Por eso esto lee SOLO las miniaturas (que acá ya apuntan a la
+   * imagen en su resolución completa — no hace falta buscar una versión
+   * más grande aparte, solo el paso de -O a -F si hiciera falta).
    */
   function extractFromInternalCarousel() {
-    const thumbs = document.querySelectorAll(".img-carousel__thumb-img");
+    const scope = document.querySelector(".img-carousel");
+    if (!scope) return [];
+    const thumbs = scope.querySelectorAll(".img-carousel__thumb-img");
     const out = [];
     const seen = new Set();
     thumbs.forEach((img) => {
@@ -75,10 +89,14 @@
   /**
    * Si no hay miniaturas de ningún lado pero sí una imagen grande sola
    * (ej. el carrusel interno con una sola foto todavía, sin miniaturas
-   * montadas), se usa esa — mejor una foto que ninguna.
+   * montadas), se usa esa — mejor una foto que ninguna. Mismo scope que
+   * extractFromInternalCarousel (primer ".img-carousel" = lado
+   * izquierdo/USER PRODUCT), para no traer la imagen grande del lado
+   * derecho por error.
    */
   function extractFallbackSingleImage() {
-    const main = document.querySelector(".img-carousel__main");
+    const scope = document.querySelector(".img-carousel");
+    const main = scope?.querySelector(".img-carousel__main");
     if (!main || !main.src) return [];
     return [{ url: upscaleImageUrl(main.src), thumb: main.src }];
   }
