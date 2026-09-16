@@ -20,6 +20,8 @@ const PAIRS = [
   ["copiar.variantes.src.js", "copiar.variantes.min.js", "copiar.variantes.url.txt", "copiar.variantes.url.js", "MLF_COPIAR_VARIANTES_HREF"],
   ["pegar.variante.src.js", "pegar.variante.min.js", "pegar.variante.url.txt", "pegar.variante.url.js", "MLF_PEGAR_VARIANTE_HREF"],
   ["copiar.comparator.src.js", "copiar.comparator.min.js", "copiar.comparator.url.txt", "copiar.comparator.url.js", "MLF_COPIAR_COMPARATOR_HREF"],
+  ["copiar.fotos.src.js", "copiar.fotos.min.js", "copiar.fotos.url.txt", "copiar.fotos.url.js", "MLF_COPIAR_FOTOS_HREF"],
+  ["pegar.fotos.src.js", "pegar.fotos.min.js", "pegar.fotos.url.txt", "pegar.fotos.url.js", "MLF_PEGAR_FOTOS_HREF"],
 ];
 
 for (const [src, min, urlTxt, urlJs, varName] of PAIRS) {

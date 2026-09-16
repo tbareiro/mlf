@@ -543,7 +543,7 @@
       <li>No clickea Guardar, Finalizar ni Enviar — eso queda siempre en tu mano.</li>
       <li>No corre solo: cada paso empieza con un click tuyo, nunca con un timer.</li>
       <li>No manda datos a ningún servidor propio — el único destino es el formulario que ya tenés en pantalla.</li>
-      <li>No copia fotos — eso queda para completar a mano por ahora.</li>
+      <li>No copia fotos en MLF Copiar/Pegar (los de producción) — eso vive, en prueba, en "Copiar Fotos"/"Pegar Fotos" dentro de Builds de prueba.</li>
       <li>No copia GTIN — MercadoLibre no lo muestra en la ficha de la publicación. Sí copia el ISBN cuando está visible.</li>
       <li>No confía en silencio: cuando completa algo por aproximación, o cuando agrega una opción nueva a una lista, lo marca aparte en vez de darlo por bueno — igual conviene revisar, sobre todo en listas cerradas (ej. un pedal cargado como "Guitarra" puede pegarse como "Guitarra acústica").</li>
       <li>Solo lleva la información de un lado al otro — el análisis y la carga fina siguen haciéndose a mano desde BC y el sitio.</li>
@@ -580,6 +580,14 @@
           <a id="mlf-pegar-comparator-link" class="beta-link">Pegar Comparator <span class="beta-tag">nuevo</span></a>
           <span class="beta-desc">Como MLF Pegar, pero además matchea campos por id/name (no solo por texto) y completa primero los atributos comunes — recién después los que distinguen la variante (ej. Color). Pensado para usarse junto con "Copiar Comparator".</span>
         </li>
+        <li>
+          <a id="mlf-copiar-fotos-link" class="beta-link">Copiar Fotos <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Junta las fotos de la galería de la publicación (en su mayor resolución) y copia sus URLs. Se usa junto con "Pegar Fotos".</span>
+        </li>
+        <li>
+          <a id="mlf-pegar-fotos-link" class="beta-link">Pegar Fotos <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Descarga las fotos copiadas con "Copiar Fotos" y las carga todas juntas en el campo de fotos de la variante — un solo click, no una por una. Corré esto con la sección de fotos de la variante ya abierta en pantalla.</span>
+        </li>
       </ul>
     </details>
   </footer>
@@ -591,6 +599,8 @@
 <script src="pegar.variante.url.js"></script>
 <script src="copiar.comparator.url.js"></script>
 <script src="pegar.comparator.url.js"></script>
+<script src="copiar.fotos.url.js"></script>
+<script src="pegar.fotos.url.js"></script>
 <script>
   document.getElementById("mlf-copiar-link").href = window.MLF_COPIAR_HREF;
   document.getElementById("mlf-pegar-link").href = window.MLF_PEGAR_HREF;
@@ -599,6 +609,8 @@
   document.getElementById("mlf-pegar-variante-link").href = window.MLF_PEGAR_VARIANTE_HREF;
   document.getElementById("mlf-copiar-comparator-link").href = window.MLF_COPIAR_COMPARATOR_HREF;
   document.getElementById("mlf-pegar-comparator-link").href = window.MLF_PEGAR_COMPARATOR_HREF;
+  document.getElementById("mlf-copiar-fotos-link").href = window.MLF_COPIAR_FOTOS_HREF;
+  document.getElementById("mlf-pegar-fotos-link").href = window.MLF_PEGAR_FOTOS_HREF;
 </script>
 
 <script>
