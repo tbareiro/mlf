@@ -81,7 +81,13 @@
       const label = (block.querySelector(".comparator-result__id-label")?.textContent || "").trim();
       if (label === "USER PRODUCT") userProductBlock = block;
     });
-    const title = (userProductBlock?.querySelector(".comparator-result__id-title")?.textContent || "").trim();
+    // Si no hay bloque con label "USER PRODUCT" (p.ej. el comparador muestra
+    // un solo producto, sin comparación lado a lado), usar el primer
+    // .comparator-result__id-title que aparezca en la página.
+    const titleEl =
+      userProductBlock?.querySelector(".comparator-result__id-title") ||
+      document.querySelector(".comparator-result__id-title");
+    const title = (titleEl?.textContent || "").trim();
     if (title) out.push({ label: "Título", value: title });
 
     document.querySelectorAll(".comparator-result__description-column").forEach((col) => {
