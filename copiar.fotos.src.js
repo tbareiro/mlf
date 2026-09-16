@@ -14,6 +14,18 @@
   document.getElementById(OVERLAY_ID)?.remove();
 
   /**
+   * Las URLs de fotos de ML traen un código de tamaño antes de la
+   * extensión (ej. "...-O.jpg"). "O" es una versión chica (bajo 500px de
+   * lado) — "F" es la misma foto pero expandida. Se pide expandida
+   * siempre que el link tenga ese sufijo; si no lo tiene (ya viene en otro
+   * tamaño, ej. la "-F" que ya trae data-zoom en la galería de ML), se
+   * deja tal cual.
+   */
+  function upscaleImageUrl(url) {
+    return url.replace(/-O(\.[a-zA-Z0-9]+)$/, "-F$1");
+  }
+
+  /**
    * Carrusel de imágenes de la herramienta interna (img-carousel__main +
    * img-carousel__thumb-img): la imagen grande de arriba es SIEMPRE una
    * (la miniatura seleccionada, ya sea) de las de abajo — no una foto
@@ -30,7 +42,7 @@
       const url = img.src;
       if (!url || seen.has(url)) return;
       seen.add(url);
-      out.push({ url, thumb: url });
+      out.push({ url: upscaleImageUrl(url), thumb: url });
     });
     return out;
   }
@@ -52,7 +64,7 @@
       const url = (zoomEl && zoomEl.getAttribute("data-zoom")) || img.getAttribute("data-zoom") || img.src;
       if (!url || seen.has(url)) return;
       seen.add(url);
-      out.push({ url, thumb: img.src || url });
+      out.push({ url: upscaleImageUrl(url), thumb: img.src || url });
     });
     return out;
   }
@@ -65,7 +77,7 @@
   function extractFallbackSingleImage() {
     const main = document.querySelector(".img-carousel__main");
     if (!main || !main.src) return [];
-    return [{ url: main.src, thumb: main.src }];
+    return [{ url: upscaleImageUrl(main.src), thumb: main.src }];
   }
 
   function extractGalleryImages() {
