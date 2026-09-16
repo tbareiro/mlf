@@ -22,7 +22,10 @@
    * deja tal cual.
    */
   function upscaleImageUrl(url) {
-    return url.replace(/-O(\.[a-zA-Z0-9]+)$/, "-F$1");
+    // El (\?...)? de más cubre el caso (no visto todavía, pero posible) de
+    // que el src traiga un query string después de la extensión — sin
+    // eso, el reemplazo fallaba en silencio y quedaba la versión chica.
+    return url.replace(/-O(\.[a-zA-Z0-9]+)(\?[^#]*)?$/, "-F$1$2");
   }
 
   /**
