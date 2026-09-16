@@ -580,10 +580,42 @@
    * mismo nodo, se deja como "duplicado" en vez de tocarlo — se avisa en
    * vez de arriesgar pisar el dato bueno con uno peor.
    */
-  async function fillOne(attr, filledTargets) {
+  // Campos que este bookmarklet nunca debe tocar, pase lo que pase (ni por
+  // id/name, ni por label exacto, ni por fuzzy). Pedido explícito: "Tipo de
+  // lanzamiento" es una config manual de la variante (lanzamiento/preventa)
+  // que ya se decide a mano y no tiene que venir de ML. Se resuelve UNA vez
+  // al contenedor real (ver protectedTargetsFor) y de ahí en más cualquier
+  // atributo que caiga ahí — por la razón que sea — se frena antes de
+  // escribir nada, nunca se descarta en silencio (se lista aparte como
+  // "protegido" en el resumen).
+  const PROTECTED_LABELS = ["Tipo de lanzamiento"];
+
+  function protectedTargetsFor(labels) {
+    const targets = new Set();
+    for (const label of labels) {
+      const container = findContainerForLabel(label);
+      if (container) targets.add(container);
+    }
+    return targets;
+  }
+
+  // true si `el` ES uno de los contenedores protegidos, o está adentro de
+  // uno — cubre tanto el match por label (que devuelve el contenedor
+  // mismo) como el match por id/name (que devuelve el input/select de
+  // adentro).
+  function isProtected(el, protectedTargets) {
+    if (!el) return false;
+    for (const target of protectedTargets) {
+      if (target === el || target.contains(el)) return true;
+    }
+    return false;
+  }
+
+  async function fillOne(attr, filledTargets, protectedTargets) {
     if (attr.id) {
       const fieldByName = findFieldByName(attr.id);
       if (fieldByName) {
+        if (isProtected(fieldByName, protectedTargets)) return "protegido";
         if (filledTargets.has(fieldByName)) return "duplicado";
         const outcome = await fillByName(fieldByName, attr);
         if (outcome !== "sin-match") {
@@ -595,6 +627,7 @@
     for (const candidateLabel of candidateLabelsFor(attr.label)) {
       const container = findContainerForLabel(candidateLabel);
       if (!container) continue;
+      if (isProtected(container, protectedTargets)) return "protegido";
       if (filledTargets.has(container)) return "duplicado";
       const outcome = await fillByContainer(container, attr);
       if (outcome !== "sin-match") {
@@ -605,25 +638,49 @@
     return "sin-match";
   }
 
-  function showSummary(text, detail) {
+  // Sin auto-cierre: antes desaparecía solo a los 7s, muy poco tiempo para
+  // leer con calma qué faltó o qué conviene revisar (repetidos, mal
+  // escritos, aproximados). Ahora se queda en pantalla hasta que lo cerrás
+  // vos con la ✕ — y cada categoría del detalle va en su propio renglón
+  // (antes era una sola línea larga separada por " — ", difícil de leer).
+  function showSummary(text, detailLines) {
     document.getElementById("mlf-bk-toast")?.remove();
     const box = document.createElement("div");
     box.id = "mlf-bk-toast";
     box.style.cssText = [
-      "position:fixed", "right:16px", "bottom:16px", "max-width:340px",
+      "position:fixed", "right:16px", "bottom:16px", "max-width:380px", "max-height:70vh",
       "background:#1f2328", "color:#fff", "border-radius:8px", "padding:10px 12px",
       "z-index:2147483647", "font:500 12px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
-      "box-shadow:0 2px 10px rgba(0,0,0,.3)",
+      "box-shadow:0 2px 10px rgba(0,0,0,.3)", "display:flex", "flex-direction:column", "gap:6px",
     ].join(";");
-    box.textContent = text;
-    if (detail) {
-      const d = document.createElement("div");
-      d.style.cssText = "margin-top:4px;color:#cbd3dc;font-weight:400";
-      d.textContent = detail;
-      box.appendChild(d);
+
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;justify-content:space-between;align-items:flex-start;gap:8px";
+    const headerText = document.createElement("div");
+    headerText.style.cssText = "flex:1";
+    headerText.textContent = text;
+    const closeBtn = document.createElement("button");
+    closeBtn.textContent = "✕";
+    closeBtn.style.cssText = "border:none;background:none;cursor:pointer;font-size:13px;color:#9aa1ab;flex:0 0 auto";
+    closeBtn.onclick = () => box.remove();
+    header.appendChild(headerText);
+    header.appendChild(closeBtn);
+    box.appendChild(header);
+
+    if (detailLines && detailLines.length) {
+      const detail = document.createElement("div");
+      detail.style.cssText =
+        "overflow-y:auto;max-height:50vh;color:#cbd3dc;font-weight:400;line-height:1.5;border-top:1px solid #333a44;padding-top:6px";
+      detailLines.forEach((line) => {
+        const row = document.createElement("div");
+        row.style.cssText = "margin-bottom:4px";
+        row.textContent = line;
+        detail.appendChild(row);
+      });
+      box.appendChild(detail);
     }
+
     document.body.appendChild(box);
-    setTimeout(() => box.remove(), 7000);
   }
 
   const raw = await getPayloadText();
@@ -647,13 +704,22 @@
   }
 
   await expandCollapsedSections();
+  const protectedTargets = protectedTargetsFor(PROTECTED_LABELS);
 
-  const results = { texto: 0, select: 0, dropdown: 0, toggle: 0, sinMatch: [], approx: [], added: [], duplicated: [] };
+  const results = {
+    texto: 0, select: 0, dropdown: 0, toggle: 0,
+    sinMatch: [], approx: [], added: [], duplicated: [], protegido: [],
+  };
   const filledTargets = new Set();
   for (const attr of attributes) {
-    const outcome = await fillOne(attr, filledTargets);
+    const outcome = await fillOne(attr, filledTargets, protectedTargets);
     const label = attr.id ? `${attr.label} (${attr.id})` : attr.label;
-    if (outcome === "duplicado") {
+    if (outcome === "protegido") {
+      // Campo en la lista de PROTECTED_LABELS (ver arriba) — nunca se
+      // toca, ni siquiera para avisar que "no matcheó": se deja afuera a
+      // propósito, así que se lista aparte de "sin match".
+      results.protegido.push(label);
+    } else if (outcome === "duplicado") {
       // Otro atributo ya completó este mismo campo antes (ej. "Color" y
       // "Color principal" cayendo en el mismo dropdown) — no se pisa el
       // valor que ya quedó bien cargado.
@@ -683,13 +749,15 @@
   if (results.added.length) parts.push(`${results.added.length} agregados como opción nueva (confirmar)`);
   if (results.approx.length) parts.push(`${results.approx.length} aproximados (revisar)`);
   if (results.duplicated.length) parts.push(`${results.duplicated.length} repetidos (mismo campo que otro atributo)`);
+  if (results.protegido.length) parts.push(`${results.protegido.length} protegidos (no se tocan)`);
   if (results.sinMatch.length) parts.push(`${results.sinMatch.length} sin match`);
 
   const detailLines = [];
   if (results.added.length) detailLines.push(`Agregados: ${results.added.join(", ")}`);
   if (results.approx.length) detailLines.push(`Revisar: ${results.approx.join(", ")}`);
   if (results.duplicated.length) detailLines.push(`Repetidos: ${results.duplicated.join(", ")}`);
+  if (results.protegido.length) detailLines.push(`Protegidos (sin tocar): ${results.protegido.join(", ")}`);
   if (results.sinMatch.length) detailLines.push(`Sin match: ${results.sinMatch.join(", ")}`);
 
-  showSummary(parts.join(" · "), detailLines.join(" — "));
+  showSummary(parts.join(" · "), detailLines);
 })();

@@ -1,32 +1,27 @@
-// MLF - Bookmarklet "Pegar Variante" (PROTOTIPO, no deployado).
+// MLF - Bookmarklet "Pegar Comparator" (correr parado en la herramienta
+// interna). Versión final — reemplaza al viejo build minificado a mano
+// (pegar.comparator.url.js sin fuente) por uno compilado igual que el
+// resto, desde este archivo.
 //
-// Complementa "MLF Pegar" (pegar.src.js, sin cambios) para el caso de
-// publicaciones con varias variantes de color/diseño/etc. Flujo pensado:
-//   1. "MLF Copiar Variantes" en la publicación de ML -> junta TODAS las
-//      variantes en un solo paquete (ver copiar.variantes.src.js).
-//   2. En la herramienta interna: "MLF Pegar" (el de siempre, sin tocar)
-//      completa el producto base con la primera variante.
-//   3. Clickeás "Agregar otra variante" en la herramienta (vos, a mano —
-//      este bookmarklet no lo hace por vos) y dejás esa tarjeta abierta.
-//   4. "MLF Pegar Variante" -> elegís cuál de las variantes restantes
-//      querés y completa SOLO la tarjeta que tenés abierta en pantalla.
+// Cero instalación. Lee el portapapeles (o, si el navegador bloquea leerlo
+// por script, te pide que lo pegues vos con Ctrl+V en un cuadro) y completa
+// los campos del formulario. No hace requests propios, no toca nada que no
+// sea el formulario visible, y nunca clickea "Guardar"/"Finalizar"/"Enviar"
+// — eso queda siempre en tus manos.
 //
-// CONFIRMADO EN VIVO (categoryId=MLA1055, "Moto G47"): la herramienta real
-// es un ACORDEÓN estricto — "Características del producto" y cada
-// "Variante N" son mutuamente excluyentes, y una tarjeta colapsada
-// DESMONTA sus campos del DOM por completo (no es solo un display:none).
-// Por eso la primera versión de este archivo (que abría TODO por las
-// dudas y después usaba "la última coincidencia" para adivinar cuál
-// tarjeta era la nueva) fallaba: abrir "Variante 1" para buscar sus
-// campos cerraba de nuevo la tarjeta que realmente quería completar, y no
-// hay forma de tener dos tarjetas abiertas a la vez para comparar.
-//
-// El fix: en vez de abrir/adivinar, se apunta directo a la tarjeta que
-// YA está abierta en pantalla (la que el acordeón deja expandida en ese
-// momento — normalmente la que acabás de crear con "Agregar otra
-// variante") y se busca cada campo SOLO ahí adentro. Si por algún motivo
-// no hay ninguna tarjeta de variante abierta, cae de vuelta a buscar en
-// toda la página (comportamiento anterior) en vez de fallar en seco.
+// Diferencias contra pegar.src.js (que sigue existiendo como "Pegar Item",
+// para publicaciones sin comparador):
+//   - findFieldByName también matchea nombres anidados (ej.
+//     "variante.color[...]"), no solo el id "pelado" al principio — la
+//     herramienta anida algunos campos de variante bajo un prefijo.
+//   - Los atributos vienen con scope:"child" cuando distinguen la variante
+//     (ver copiar.comparator.src.js) — se pegan en dos pasadas: primero los
+//     comunes (parent), después los child, para que un campo compartido no
+//     quede "duplicado" por el lado equivocado.
+//   - Reintento automático: lo que da "sin match" en la primera pasada se
+//     reintenta una vez más después de una pausa corta — cubre dropdowns
+//     que todavía no terminaron de montar sus opciones la primera vez
+//     (pasa más seguido acá por el volumen de campos que llegan juntos).
 
 (async function () {
   "use strict";
@@ -47,10 +42,7 @@
     } catch (_) {
       /* el navegador bloqueó la lectura del portapapeles por script */
     }
-    return window.prompt(
-      "Pegá acá el texto copiado con 'MLF Copiar Variantes' (Ctrl+V):",
-      ""
-    );
+    return window.prompt("Pegá acá el texto copiado con 'Copiar Comparator' (Ctrl+V):", "");
   }
 
   function setNativeValue(el, value) {
@@ -224,36 +216,37 @@
     return r.width > 0 && r.height > 0;
   }
 
-  /**
-   * La tarjeta (".expandible-card") cuyo toggle está actualmente abierto
-   * — ver nota al principio del archivo. Devuelve `document` si no
-   * encuentra ninguna (herramienta sin este patrón de acordeón, u otra
-   * pantalla), para no romper el comportamiento en ese caso.
-   */
-  function getScopeRoot() {
-    const cards = Array.from(document.querySelectorAll(".expandible-card"));
-    const open = cards.find((card) => {
-      const toggle = card.querySelector(".expandible-card__toggle, [aria-expanded]");
-      return toggle && toggle.getAttribute("aria-expanded") === "true";
-    });
-    return open || document;
+  async function expandCollapsedSections() {
+    for (let pass = 0; pass < 3; pass++) {
+      const collapsed = Array.from(
+        document.querySelectorAll('[aria-expanded="false"][role="button"]')
+      );
+      if (!collapsed.length) return;
+      collapsed.forEach((el) => el.click());
+      await new Promise((r) => setTimeout(r, 200));
+    }
   }
 
-  function findFieldByName(scopeRoot, id) {
+  // A diferencia de pegar.src.js, también matchea un name ANIDADO bajo un
+  // prefijo (ej. "variante.color[0]") — no solo uno que empieza
+  // directamente con el id. La herramienta anida algunos campos de
+  // variante así, y sin este patrón extra quedaban sin resolver por id
+  // aunque el id copiado era correcto.
+  function findFieldByName(id) {
     let escaped;
     try {
       escaped = CSS.escape(id);
     } catch (_) {
       escaped = null;
     }
-    const byAttr = escaped ? scopeRoot.querySelector(`[name^="${escaped}["]`) : null;
-    if (byAttr) return byAttr;
-    return (
-      Array.from(scopeRoot.querySelectorAll("input,select,textarea")).find((cand) => {
+    let el = escaped ? document.querySelector(`[name^="${escaped}["], [name*=".${escaped}["]`) : null;
+    if (!el) {
+      el = Array.from(document.querySelectorAll("input,select,textarea")).find((cand) => {
         const name = cand.getAttribute("name") || "";
-        return name === id || name.startsWith(`${id}[`);
-      }) || null
-    );
+        return name === id || name.startsWith(`${id}[`) || name.includes(`.${id}[`);
+      });
+    }
+    return el || null;
   }
 
   async function fillByName(fieldEl, attr) {
@@ -308,17 +301,10 @@
       .join(" ");
   }
 
-  /**
-   * Idéntico a pegar.src.js, salvo que busca labels SOLO dentro de
-   * `scopeRoot` (la tarjeta de variante abierta — ver getScopeRoot) en
-   * vez de en toda la página. Es lo que reemplaza al viejo "última
-   * coincidencia": acá no hace falta adivinar cuál es la tarjeta nueva
-   * porque solo se mira adentro de la que está realmente abierta.
-   */
-  function findContainerForLabel(scopeRoot, label) {
+  function findContainerForLabel(label) {
     const target = normalize(label);
-    const labels = Array.from(scopeRoot.querySelectorAll("label"));
-    const ariaCandidates = Array.from(scopeRoot.querySelectorAll("section[aria-label], div[aria-label]"));
+    const labels = Array.from(document.querySelectorAll("label"));
+    const ariaCandidates = Array.from(document.querySelectorAll("section[aria-label], div[aria-label]"));
 
     let labelEl = labels.find((l) => normalize(l.getAttribute("for") || "") === target);
     if (!labelEl) labelEl = labels.find((l) => normalize(l.textContent) === target);
@@ -354,6 +340,7 @@
         if (container) return container;
       }
     }
+
     return null;
   }
 
@@ -465,14 +452,16 @@
     return r.exact ? "dropdown" : "dropdown-approx";
   }
 
-  // Ver misma constante en pegar.src.js: "Tipo de lanzamiento" es config
-  // manual de la variante, nunca tiene que venir pisada por un pegado.
+  // Campos que este bookmarklet nunca debe tocar, pase lo que pase (ni por
+  // id/name, ni por label exacto, ni por fuzzy). Ver misma constante en
+  // pegar.src.js: "Tipo de lanzamiento" es config manual de la variante
+  // que ya se decide a mano y no tiene que venir de ML.
   const PROTECTED_LABELS = ["Tipo de lanzamiento"];
 
-  function protectedTargetsFor(scopeRoot, labels) {
+  function protectedTargetsFor(labels) {
     const targets = new Set();
     for (const label of labels) {
-      const container = findContainerForLabel(scopeRoot, label);
+      const container = findContainerForLabel(label);
       if (container) targets.add(container);
     }
     return targets;
@@ -486,9 +475,9 @@
     return false;
   }
 
-  async function fillOne(scopeRoot, attr, filledTargets, protectedTargets) {
+  async function fillOne(attr, filledTargets, protectedTargets) {
     if (attr.id) {
-      const fieldByName = findFieldByName(scopeRoot, attr.id);
+      const fieldByName = findFieldByName(attr.id);
       if (fieldByName) {
         if (isProtected(fieldByName, protectedTargets)) return "protegido";
         if (filledTargets.has(fieldByName)) return "duplicado";
@@ -500,7 +489,7 @@
       }
     }
     for (const candidateLabel of candidateLabelsFor(attr.label)) {
-      const container = findContainerForLabel(scopeRoot, candidateLabel);
+      const container = findContainerForLabel(candidateLabel);
       if (!container) continue;
       if (isProtected(container, protectedTargets)) return "protegido";
       if (filledTargets.has(container)) return "duplicado";
@@ -513,8 +502,9 @@
     return "sin-match";
   }
 
-  // Sin auto-cierre (ver pegar.src.js) — se queda hasta que lo cerrás con
-  // la ✕, y cada categoría del detalle va en su propio renglón.
+  // Sin auto-cierre — se queda en pantalla hasta que lo cerrás con la ✕,
+  // para poder leer con calma qué faltó o qué conviene revisar. Cada
+  // categoría del detalle va en su propio renglón.
   function showSummary(text, detailLines) {
     document.getElementById("mlf-bk-toast")?.remove();
     const box = document.createElement("div");
@@ -555,161 +545,107 @@
     document.body.appendChild(box);
   }
 
-  async function runFill(attributes) {
-    // Se apunta a la tarjeta que esté abierta EN ESTE MOMENTO — la que el
-    // acordeón dejó expandida (normalmente la que acabás de crear con
-    // "Agregar otra variante"). No se abre ni cierra nada: hacerlo
-    // rompería el acordeón (solo puede haber una tarjeta abierta a la
-    // vez), que es justo lo que causaba que esto no pegara bien antes.
-    const scopeRoot = getScopeRoot();
-    const protectedTargets = protectedTargetsFor(scopeRoot, PROTECTED_LABELS);
-    const results = {
-      texto: 0, select: 0, dropdown: 0, toggle: 0,
-      sinMatch: [], approx: [], added: [], duplicated: [], protegido: [],
-    };
-    const filledTargets = new Set();
-    for (const attr of attributes) {
-      const outcome = await fillOne(scopeRoot, attr, filledTargets, protectedTargets);
-      const label = attr.id ? `${attr.label} (${attr.id})` : attr.label;
-      if (outcome === "protegido") {
-        results.protegido.push(label);
-      } else if (outcome === "duplicado") {
-        results.duplicated.push(label);
-      } else if (outcome === "sin-match") {
-        results.sinMatch.push(label);
-      } else if (outcome.endsWith("-approx")) {
-        results[outcome.replace("-approx", "")]++;
-        results.approx.push(label);
-      } else if (outcome === "dropdown-added") {
-        results.dropdown++;
-        results.added.push(label);
-      } else {
-        results[outcome]++;
-      }
-    }
-    const done = results.texto + results.select + results.dropdown + results.toggle;
-    const parts = [`${done} campo(s) completados`];
-    if (results.added.length) parts.push(`${results.added.length} agregados como opción nueva (confirmar)`);
-    if (results.approx.length) parts.push(`${results.approx.length} aproximados (revisar)`);
-    if (results.duplicated.length) parts.push(`${results.duplicated.length} repetidos`);
-    if (results.protegido.length) parts.push(`${results.protegido.length} protegidos (no se tocan)`);
-    if (results.sinMatch.length) parts.push(`${results.sinMatch.length} sin match`);
-    const detailLines = [];
-    if (results.added.length) detailLines.push(`Agregados: ${results.added.join(", ")}`);
-    if (results.approx.length) detailLines.push(`Revisar: ${results.approx.join(", ")}`);
-    if (results.duplicated.length) detailLines.push(`Repetidos: ${results.duplicated.join(", ")}`);
-    if (results.protegido.length) detailLines.push(`Protegidos (sin tocar): ${results.protegido.join(", ")}`);
-    if (results.sinMatch.length) detailLines.push(`Sin match: ${results.sinMatch.join(", ")}`);
-    showSummary(parts.join(" · "), detailLines);
-  }
-
-  // --- Arranque: leer payload, resolver a lista de variantes -----------
-
   const raw = await getPayloadText();
   if (!raw) {
     showSummary("Cancelado: no hay datos para pegar.");
     return;
   }
+
   let payload;
   try {
     payload = JSON.parse(raw);
   } catch (err) {
-    showSummary("El texto pegado no es válido (¿copiaste bien con 'MLF Copiar Variantes'?).");
+    showSummary("El texto pegado no es válido (¿copiaste bien con 'Copiar Comparator'?).");
     return;
   }
 
-  // v2 (copiar.variantes.src.js) trae payload.variants. Si vinieran datos
-  // de la "MLF Copiar" de siempre (v1, sin variants), se trata como una
-  // única variante sin nombre — igual sirve para completar un bloque de
-  // variante nuevo con esos mismos atributos.
-  const variantsList =
-    payload && Array.isArray(payload.variants) && payload.variants.length
-      ? payload.variants
-      : payload && payload.attributes
-      ? [{ label: "(sin nombre)", attributes: payload.attributes }]
-      : [];
-
-  if (!variantsList.length) {
+  const attributes = payload && payload.attributes;
+  if (!attributes || !attributes.length) {
     showSummary("No hay atributos en los datos pegados.");
     return;
   }
 
-  if (variantsList.length === 1) {
-    await runFill(variantsList[0].attributes);
-    return;
+  await expandCollapsedSections();
+  const protectedTargets = protectedTargetsFor(PROTECTED_LABELS);
+
+  const results = {
+    texto: 0, select: 0, dropdown: 0, toggle: 0,
+    sinMatch: [], approx: [], added: [], duplicated: [], protegido: [],
+  };
+  const filledTargets = new Set();
+
+  function attrLabel(attr) {
+    return attr.id ? `${attr.label} (${attr.id})` : attr.label;
   }
 
-  // --- Picker: varias variantes en el paquete, elegir cuál pegar ahora -
-
-  const baseAttrs = (variantsList.find((v) => v.selected) || variantsList[0]).attributes;
-  function diffFromBase(attrs) {
-    const baseKeys = new Set(baseAttrs.map((a) => a.label.trim().toLowerCase() + "|" + a.value.trim().toLowerCase()));
-    return attrs.filter((a) => !baseKeys.has(a.label.trim().toLowerCase() + "|" + a.value.trim().toLowerCase()));
+  async function fillAttr(attr) {
+    const outcome = await fillOne(attr, filledTargets, protectedTargets);
+    const label = attrLabel(attr);
+    if (outcome === "protegido") {
+      results.protegido.push(label);
+    } else if (outcome === "duplicado") {
+      results.duplicated.push(label);
+    } else if (outcome === "sin-match") {
+      results.sinMatch.push(label);
+    } else if (outcome.endsWith("-approx")) {
+      results[outcome.replace("-approx", "")]++;
+      results.approx.push(label);
+    } else if (outcome === "dropdown-added") {
+      results.dropdown++;
+      results.added.push(label);
+    } else {
+      results[outcome]++;
+    }
+    return outcome;
   }
 
-  const picker = document.createElement("div");
-  picker.id = "mlf-bk-variant-picker";
-  picker.style.cssText = [
-    "position:fixed", "top:16px", "right:16px", "width:300px",
-    "background:#fff", "color:#1f2328", "border-radius:10px",
-    "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
-    "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
-    "overflow:hidden",
-  ].join(";");
+  /**
+   * Reintenta UNA vez, después de una pausa corta, lo que dio "sin match"
+   * en la primera pasada — cubre dropdowns que todavía no terminaron de
+   * montar sus opciones (ver comentario al principio del archivo).
+   */
+  async function fillList(attrs) {
+    const failed = [];
+    for (const attr of attrs) {
+      if ((await fillAttr(attr)) === "sin-match") failed.push(attr);
+    }
+    if (!failed.length) return;
+    await new Promise((r) => setTimeout(r, 800));
+    for (const attr of failed) {
+      const idx = results.sinMatch.indexOf(attrLabel(attr));
+      if (idx !== -1) results.sinMatch.splice(idx, 1);
+      await fillAttr(attr);
+    }
+  }
 
-  const pHeader = document.createElement("div");
-  pHeader.style.cssText =
-    "display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600";
-  pHeader.textContent = "MLF Pegar Variante";
-  const pClose = document.createElement("button");
-  pClose.textContent = "✕";
-  pClose.style.cssText = "border:none;background:none;cursor:pointer;font-size:14px;color:#6b7280";
-  pClose.onclick = () => picker.remove();
-  pHeader.appendChild(pClose);
-  picker.appendChild(pHeader);
+  // Primero los atributos comunes (parent/sin scope), después los "child"
+  // (los que distinguen la variante, ej. Color — ver
+  // copiar.comparator.src.js) — así un campo compartido se completa por el
+  // lado correcto antes de que un atributo de variante pueda pisarlo o
+  // quedar marcado "duplicado" al revés.
+  const parentAttrs = attributes.filter((a) => a.scope !== "child");
+  const childAttrs = attributes.filter((a) => a.scope === "child");
 
-  const pBody = document.createElement("div");
-  pBody.style.cssText = "padding:10px 12px;color:#374151;font-size:12.5px;line-height:1.4";
-  pBody.textContent =
-    'Elegí qué variante completar en el bloque que acabás de agregar con "Agregar variante" en la herramienta.';
-  picker.appendChild(pBody);
+  await fillList(parentAttrs);
+  if (childAttrs.length) {
+    await new Promise((r) => setTimeout(r, 400));
+    await fillList(childAttrs);
+  }
 
-  const diffOnlyRow = document.createElement("label");
-  diffOnlyRow.style.cssText = "display:flex;gap:6px;align-items:center;padding:0 12px 10px;font-size:12px;color:#374151";
-  const diffOnlyCb = document.createElement("input");
-  diffOnlyCb.type = "checkbox";
-  diffOnlyCb.checked = true;
-  diffOnlyRow.appendChild(diffOnlyCb);
-  diffOnlyRow.append(
-    " Solo completar lo que cambia respecto a la primera variante (recomendado si el formulario ya trae precargados los campos compartidos)"
-  );
-  picker.appendChild(diffOnlyRow);
+  const done = results.texto + results.select + results.dropdown + results.toggle;
+  const parts = [`${done} campo(s) completados`];
+  if (results.added.length) parts.push(`${results.added.length} agregados como opción nueva (confirmar)`);
+  if (results.approx.length) parts.push(`${results.approx.length} aproximados (revisar)`);
+  if (results.duplicated.length) parts.push(`${results.duplicated.length} repetidos (mismo campo que otro atributo)`);
+  if (results.protegido.length) parts.push(`${results.protegido.length} protegidos (no se tocan)`);
+  if (results.sinMatch.length) parts.push(`${results.sinMatch.length} sin match`);
 
-  const list = document.createElement("div");
-  list.style.cssText = "border-top:1px solid #e5e7eb";
-  variantsList.forEach((variant) => {
-    const row = document.createElement("button");
-    const isBase = variant === (variantsList.find((v) => v.selected) || variantsList[0]);
-    row.textContent = variant.label + (isBase ? " (base, ya cargada con MLF Pegar)" : "");
-    row.style.cssText = [
-      "display:block", "width:100%", "text-align:left", "padding:8px 12px",
-      "border:none", "border-bottom:1px solid #f1f2f4", "background:#fff",
-      "cursor:pointer", "font-size:12.5px",
-    ].join(";");
-    row.onmouseenter = () => (row.style.background = "#f6f7fb");
-    row.onmouseleave = () => (row.style.background = "#fff");
-    row.onclick = async () => {
-      const attrsToUse = diffOnlyCb.checked ? diffFromBase(variant.attributes) : variant.attributes;
-      picker.remove();
-      if (!attrsToUse.length) {
-        showSummary(`"${variant.label}" no tiene diferencias respecto a la base — nada para completar.`);
-        return;
-      }
-      await runFill(attrsToUse);
-    };
-    list.appendChild(row);
-  });
-  picker.appendChild(list);
+  const detailLines = [];
+  if (results.added.length) detailLines.push(`Agregados: ${results.added.join(", ")}`);
+  if (results.approx.length) detailLines.push(`Revisar: ${results.approx.join(", ")}`);
+  if (results.duplicated.length) detailLines.push(`Repetidos: ${results.duplicated.join(", ")}`);
+  if (results.protegido.length) detailLines.push(`Protegidos (sin tocar): ${results.protegido.join(", ")}`);
+  if (results.sinMatch.length) detailLines.push(`Sin match: ${results.sinMatch.join(", ")}`);
 
-  document.body.appendChild(picker);
+  showSummary(parts.join(" · "), detailLines);
 })();
