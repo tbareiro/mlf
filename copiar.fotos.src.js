@@ -69,12 +69,30 @@
    * una imagen chica por defecto — la versión grande vive en el atributo
    * data-zoom de un ancestro cercano. Se prueba esa primero y se cae a
    * img.src solo si no está.
+   *
+   * Un slot de la galería puede ser un VIDEO en vez de una foto — se
+   * arma distinto: en vez de <img class="ui-pdp-gallery__figure__image">
+   * directo, trae un <section class="clip-wrapper ..."> envolviendo un
+   * <img class="clip-wrapper__thumbnail"> (el frame congelado del video)
+   * más los controles de play/pause/volumen. Ese frame es una imagen
+   * válida técnicamente, pero NO es una foto del producto — bug real
+   * reportado: "copia el segundo link del carrusel que suele ser un
+   * video". Se descarta cualquier figura que traiga ese wrapper, sin
+   * intentar sacarle una foto de ahí.
    */
   function extractFromMLGallery() {
     const figs = document.querySelectorAll(".ui-pdp-gallery__figure, [class*='gallery__figure']");
     const out = [];
     const seen = new Set();
     figs.forEach((fig) => {
+      // El fallback [class*='gallery__figure'] de arriba también matchea
+      // el propio wrapper del video (su clase real es
+      // "ui-pdp-gallery__figure__clip", que CONTIENE "gallery__figure"
+      // como substring) — ahí "fig" termina siendo el <section
+      // class="clip-wrapper..."> mismo, no un ancestro suyo, así que
+      // querySelector(".clip-wrapper") sobre sus descendientes no lo
+      // detecta solo. Por eso se chequean las dos formas.
+      if (fig.matches(".clip-wrapper") || fig.querySelector(".clip-wrapper")) return;
       const img = fig.querySelector("img");
       if (!img) return;
       const zoomEl = img.closest("[data-zoom]");
