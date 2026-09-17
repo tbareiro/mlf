@@ -261,6 +261,8 @@
       const r = fillSelect(fieldEl, attr.value, isColorLabel(attr.label));
       return r.ok ? (r.exact ? "select" : "select-approx") : "sin-match";
     }
+    const splitField = findSplitUnitFieldFromInput(fieldEl);
+    if (splitField) return fillSplitUnitField(splitField, attr);
     const type = (fieldEl.getAttribute("type") || "text").toLowerCase();
     const isPlainTextField =
       fieldEl.tagName === "TEXTAREA" || ["text", "search", "tel", "email", "number", "url"].includes(type);
@@ -365,13 +367,32 @@
     return candidates;
   }
 
+  // Se detecta por ESTRUCTURA (un input de texto conviviendo con un
+  // [role="combobox"] en el mismo contenedor), no por el nombre exacto de
+  // una clase — ver misma nota en pegar.src.js: ML usa nombres distintos
+  // según el campo/categoría ("andes-form-control--split" y
+  // "andes-form-control__split-field" vistos apuntando a la MISMA
+  // estructura), y depender de una sola clase dejaba "Peso" pegándose en
+  // gramos crudos dentro de un campo de kilos, sin convertir ni tocar la
+  // unidad.
   function findSplitUnitField(container) {
-    const splitRoot = container.querySelector(".andes-form-control--split");
-    if (!splitRoot) return null;
-    const input = splitRoot.querySelector('input[type="text"], input:not([type])');
-    const unitTrigger = splitRoot.querySelector('[role="combobox"]');
-    if (!input || !unitTrigger) return null;
+    const input = container.querySelector(
+      'input[type="text"]:not([role="combobox"]), input:not([type]):not([role="combobox"])'
+    );
+    if (!input) return null;
+    const unitTrigger = container.querySelector('[role="combobox"]');
+    if (!unitTrigger || unitTrigger === input) return null;
     return { input, unitTrigger };
+  }
+
+  /** Mismo findSplitUnitField de arriba, arrancando desde el input resuelto por id/name. */
+  function findSplitUnitFieldFromInput(inputEl, maxDepth) {
+    let node = inputEl.parentElement;
+    for (let i = 0; i < (maxDepth || 5) && node; i++, node = node.parentElement) {
+      const splitField = findSplitUnitField(node);
+      if (splitField && splitField.input === inputEl) return splitField;
+    }
+    return null;
   }
 
   function parseNumberUnit(value) {

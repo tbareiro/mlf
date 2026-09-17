@@ -254,6 +254,12 @@
       const r = fillSelect(fieldEl, attr.value, isColorLabel(attr.label));
       return r.ok ? (r.exact ? "select" : "select-approx") : "sin-match";
     }
+    // Ver findSplitUnitFieldFromInput: mismo chequeo que fillByContainer
+    // hace por label, pero para cuando el campo se resolvió por id/name
+    // — sin esto un campo número+unidad matcheado por id se pegaba con
+    // el número crudo y la unidad sin tocar.
+    const splitField = findSplitUnitFieldFromInput(fieldEl);
+    if (splitField) return fillSplitUnitField(splitField, attr);
     const type = (fieldEl.getAttribute("type") || "text").toLowerCase();
     const isPlainTextField =
       fieldEl.tagName === "TEXTAREA" || ["text", "search", "tel", "email", "number", "url"].includes(type);
@@ -352,13 +358,39 @@
     return candidates;
   }
 
+  // Se detecta por ESTRUCTURA (un input de texto conviviendo con un
+  // [role="combobox"] en el mismo contenedor), no por el nombre exacto de
+  // una clase — ML usa nombres distintos según el campo/categoría para
+  // marcar esto (se vieron tanto "andes-form-control--split" como
+  // "andes-form-control__split-field" apuntando a la MISMA estructura).
+  // Bug real reportado: "Peso" se copiaba en gramos y se pegaba tal cual
+  // en el campo de kilos (152 g -> 152 kg pegado) porque esta categoría
+  // usa la segunda variante de clase, que la detección vieja no
+  // reconocía — el número se pegaba crudo, sin tocar la unidad.
   function findSplitUnitField(container) {
-    const splitRoot = container.querySelector(".andes-form-control--split");
-    if (!splitRoot) return null;
-    const input = splitRoot.querySelector('input[type="text"], input:not([type])');
-    const unitTrigger = splitRoot.querySelector('[role="combobox"]');
-    if (!input || !unitTrigger) return null;
+    const input = container.querySelector(
+      'input[type="text"]:not([role="combobox"]), input:not([type]):not([role="combobox"])'
+    );
+    if (!input) return null;
+    const unitTrigger = container.querySelector('[role="combobox"]');
+    if (!unitTrigger || unitTrigger === input) return null;
     return { input, unitTrigger };
+  }
+
+  /**
+   * Mismo findSplitUnitField de arriba, pero arrancando desde el INPUT ya
+   * resuelto por id/name (fillByName) en vez de desde un contenedor
+   * encontrado por label. Verifica que el input que matchea sea el mismo
+   * que se pasó, para no confundirlo con el de otro campo split vecino
+   * que caiga dentro del mismo ancestro más amplio.
+   */
+  function findSplitUnitFieldFromInput(inputEl, maxDepth) {
+    let node = inputEl.parentElement;
+    for (let i = 0; i < (maxDepth || 5) && node; i++, node = node.parentElement) {
+      const splitField = findSplitUnitField(node);
+      if (splitField && splitField.input === inputEl) return splitField;
+    }
+    return null;
   }
 
   function parseNumberUnit(value) {
