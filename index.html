@@ -142,10 +142,15 @@
   }
   .bookmarks-bar{
     display:flex;
+    flex-direction:column;
+    gap:10px;
+    padding:12px 14px;
+  }
+  .bk-row{
+    display:flex;
     gap:10px;
     align-items:center;
     flex-wrap:wrap;
-    padding:12px 14px;
   }
   .bk{
     font-family:"IBM Plex Sans", Arial, sans-serif;
@@ -419,16 +424,22 @@
         <div class="chrome-address"></div>
       </div>
       <div class="bookmarks-bar">
-        <a class="bk" id="mlf-copiar-comparator-link"><span class="glyph">↳</span>Copiar Comparator</a>
-        <a class="bk" id="mlf-pegar-comparator-link"><span class="glyph">↲</span>Pegar Comparator</a>
-        <a class="bk" id="mlf-copiar-link"><span class="glyph">↳</span>Copiar Item</a>
-        <a class="bk" id="mlf-pegar-link"><span class="glyph">↲</span>Pegar Item</a>
+        <div class="bk-row">
+          <a class="bk" id="mlf-copiar-comparator-link"><span class="glyph">↳</span>Copiar Comparator</a>
+          <a class="bk" id="mlf-pegar-comparator-link"><span class="glyph">↲</span>Pegar Comparator</a>
+        </div>
+        <div class="bk-row">
+          <a class="bk" id="mlf-copiar-link"><span class="glyph">↳</span>Copiar Item</a>
+          <a class="bk" id="mlf-pegar-link"><span class="glyph">↲</span>Pegar Item</a>
+        </div>
       </div>
     </div>
     <p class="drag-hint">arrastrá cada botón de acá arriba directo a tu barra de favoritos (Ctrl+Shift+B si no la tenés visible)</p>
   </section>
 
-  <section>
+  <!-- Oculta por ahora (pedido explícito) — se deja el markup/script tal
+       cual por si sirve reactivarla más adelante, sacando el style de acá. -->
+  <section style="display:none">
     <h2>Instalación y uso, en loop</h2>
     <div class="demo-frame">
       <div class="demo-chrome">
