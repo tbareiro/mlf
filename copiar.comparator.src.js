@@ -106,7 +106,7 @@
    * Comparator" usa eso para completar primero los campos de padre y
    * recién después los de hijo.
    */
-  function extractComparatorAttrGroups() {
+  function extractFromGroupedComparatorTable() {
     const groupsByTitle = new Map();
     document.querySelectorAll(".comparator-result__attr-group").forEach((group) => {
       const title = (group.querySelector(".comparator-result__attr-group-title")?.textContent || "").trim();
@@ -138,6 +138,60 @@
       });
     });
     return out;
+  }
+
+  /**
+   * Variante "plana" del comparador — sin el wrapper
+   * .comparator-result__attr-group ni títulos de grupo: una sola
+   * <table class="comparator-result_table"> (guión bajo, no el
+   * "comparator-result__..." de la variante de arriba) con las filas
+   * tr.attr-row directo en el tbody, 4 columnas fijas (ID/Nombre, Valor
+   * Item, Valor Product, Estado). Bug real reportado: en esta variante
+   * extractFromGroupedComparatorTable no encontraba ningún
+   * .comparator-result__attr-group, así que devolvía 0 atributos en
+   * silencio (solo salían Título/Descripción, que se extraen aparte) —
+   * pasaba en ~1 de cada 20 publicaciones vistas.
+   *
+   * Acá SIEMPRE se quiere la 2da columna ("Valor Item"), nunca la 3ra
+   * ("Valor Product") — esa es la ficha de catálogo contra la que se
+   * compara, no la publicación que se está cargando. Si esa columna
+   * viene vacía (placeholder "—", filas "— Solo en product"), se
+   * descarta: no hay nada que copiar de ese atributo para esta
+   * publicación.
+   *
+   * Los nombres de clase de las columnas de valor son inconsistentes
+   * entre sí en esta variante (se vio "attr-row_value" con un guión
+   * bajo Y "attr-row__value" con dos apuntando a lo mismo, según la
+   * columna) — en vez de depender de esa clase, se lee directo el
+   * <span> de la 2da celda por posición, que el header de la tabla
+   * confirma que siempre es "Valor Item".
+   */
+  function extractFromFlatComparatorTable() {
+    const rows = document.querySelectorAll("tr.attr-row");
+    const out = [];
+    const seen = new Set();
+    rows.forEach((row) => {
+      const cells = row.querySelectorAll("td");
+      if (cells.length < 2) return;
+      const id = (cells[0].querySelector("span")?.textContent || "").trim();
+      const label =
+        (cells[0].querySelector('[class*="attr-row"][class*="name"]')?.textContent || "").trim() || id;
+      const valueCell = cells[1];
+      if (!label || !valueCell || valueCell.querySelector('[class*="empty"]')) return;
+      const value = (valueCell.querySelector("span")?.textContent || "").trim();
+      if (!value) return;
+      const key = id + "|" + label;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ id, label, value });
+    });
+    return out;
+  }
+
+  function extractComparatorAttrGroups() {
+    const grouped = extractFromGroupedComparatorTable();
+    if (grouped.length) return grouped;
+    return extractFromFlatComparatorTable();
   }
 
   // --- Extracción de página de publicación normal (fallback cuando el
