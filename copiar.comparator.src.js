@@ -21,6 +21,34 @@
   const PARENT_GROUP_TITLES = ["Identificadores Padre", "Otros atributos"];
   const CHILD_GROUP_TITLES = ["Identificadores Hijo", "Identificadores de Producto"];
 
+  // IDs de campos "de sistema" de ML (logística, impuestos, flags internos
+  // de marketing) que el comparador trae mezclados con las características
+  // reales del producto — universales, no dependen de la categoría. No hay
+  // forma de distinguirlos por estructura: en la variante plana traen
+  // exactamente la misma clase que un atributo real (attr-row--only), la
+  // única diferencia es el ID en sí. Bug real reportado: "trae algunas
+  // atts que no son necesarios" (SELLER_PACKAGE_*, IS_TOM_BRAND, etc.) —
+  // se pide a mano por ID exacto (nunca por prefijo: IS_FACTORY_KIT, por
+  // ejemplo, empieza con "IS_" igual que IS_TOM_BRAND pero SÍ es una
+  // característica real del producto).
+  const EXCLUDED_ATTR_IDS = [
+    "FILTRABLE_CHARACTER",
+    "GIFTABLE",
+    "IMPORT_DUTY",
+    "IS_HIGHLIGHT_BRAND",
+    "IS_TOM_BRAND",
+    "ITEM_CONDITION",
+    "SELLER_PACKAGE_HEIGHT",
+    "SELLER_PACKAGE_LENGTH",
+    "SELLER_PACKAGE_WEIGHT",
+    "SELLER_PACKAGE_WIDTH",
+    "VALUE_ADDED_TAX",
+  ];
+
+  function isExcludedAttrId(id) {
+    return EXCLUDED_ATTR_IDS.includes((id || "").trim());
+  }
+
   // Ver isDistinctiveValue en copiar.src.js — misma regla.
   function isDistinctiveValue(value) {
     const v = value.trim();
@@ -130,6 +158,7 @@
           const cells = row.querySelectorAll("td");
           if (cells.length < 2) return;
           const id = (cells[0].querySelector("span")?.textContent || "").trim();
+          if (isExcludedAttrId(id)) return;
           const label = (cells[0].querySelector(".attr-row__name")?.textContent || "").trim() || id;
           const value = (cells[1].querySelector(".attr-row__value")?.textContent || "").trim();
           if (!label || !value) return;
@@ -174,6 +203,7 @@
       const cells = row.querySelectorAll("td");
       if (cells.length < 2) return;
       const id = (cells[0].querySelector("span")?.textContent || "").trim();
+      if (isExcludedAttrId(id)) return;
       const label =
         (cells[0].querySelector('[class*="attr-row"][class*="name"]')?.textContent || "").trim() || id;
       const valueCell = cells[1];
