@@ -143,8 +143,20 @@
   .bookmarks-bar{
     display:flex;
     flex-direction:column;
-    gap:10px;
-    padding:12px 14px;
+    gap:26px;
+    padding:16px 14px 18px;
+  }
+  .bk-group{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .bk-group-label{
+    font-family:"IBM Plex Mono",monospace;
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--muted, #8a8f98);
   }
   .bk-row{
     display:flex;
@@ -414,7 +426,7 @@
 <div class="wrap">
   <p class="eyebrow">Catálogo · herramienta interna</p>
   <h1>Llevá los atributos de ML a la ficha de carga sin instalar nada</h1>
-  <p class="lede">Dos bookmarklets — links de favoritos comunes, no extensiones — que arrastrás una vez a la barra de Chrome. El puente entre las dos páginas es el portapapeles del sistema, nada más.</p>
+  <p class="lede">Unos pocos bookmarklets — links de favoritos comunes, no extensiones — que arrastrás una vez a la barra de Chrome. El puente entre las dos páginas es el portapapeles del sistema, nada más.</p>
 
   <section>
     <h2>Tu barra de favoritos, con esto agregado</h2>
@@ -424,13 +436,26 @@
         <div class="chrome-address"></div>
       </div>
       <div class="bookmarks-bar">
-        <div class="bk-row">
-          <a class="bk" id="mlf-copiar-comparator-link"><span class="glyph">↳</span>Copiar Comparator</a>
-          <a class="bk" id="mlf-pegar-comparator-link"><span class="glyph">↲</span>Pegar Comparator</a>
+        <div class="bk-group">
+          <span class="bk-group-label">Atributos · comparador</span>
+          <div class="bk-row">
+            <a class="bk" id="mlf-copiar-comparator-link"><span class="glyph">↳</span>Copiar Comparator</a>
+            <a class="bk" id="mlf-pegar-comparator-link"><span class="glyph">↲</span>Pegar Comparator</a>
+          </div>
         </div>
-        <div class="bk-row">
-          <a class="bk" id="mlf-copiar-link"><span class="glyph">↳</span>Copiar Item</a>
-          <a class="bk" id="mlf-pegar-link"><span class="glyph">↲</span>Pegar Item</a>
+        <div class="bk-group">
+          <span class="bk-group-label">Fotos</span>
+          <div class="bk-row">
+            <a class="bk" id="mlf-copiar-fotos-link"><span class="glyph">↳</span>Copiar Fotos</a>
+            <a class="bk" id="mlf-pegar-fotos-link"><span class="glyph">↲</span>Pegar Fotos</a>
+          </div>
+        </div>
+        <div class="bk-group">
+          <span class="bk-group-label">Atributos · publicación suelta</span>
+          <div class="bk-row">
+            <a class="bk" id="mlf-copiar-link"><span class="glyph">↳</span>Copiar Item</a>
+            <a class="bk" id="mlf-pegar-link"><span class="glyph">↲</span>Pegar Item</a>
+          </div>
         </div>
       </div>
     </div>
@@ -556,7 +581,7 @@
       <li>No clickea Guardar, Finalizar ni Enviar — eso queda siempre en tu mano.</li>
       <li>No corre solo: cada paso empieza con un click tuyo, nunca con un timer.</li>
       <li>No manda datos a ningún servidor propio — el único destino es el formulario que ya tenés en pantalla.</li>
-      <li>No copia fotos en los bookmarklets de arriba (producción) — eso vive, en prueba, en "Copiar Fotos"/"Pegar Fotos" dentro de Builds de prueba.</li>
+      <li>Los atributos y las fotos van por separado: "Copiar/Pegar Comparator" e "Item" solo llevan atributos; las fotos las llevan "Copiar Fotos"/"Pegar Fotos" (todas las de la galería, en su mayor resolución, sin videos). "Pegar Fotos" se corre con la sección de fotos de la variante ya abierta.</li>
       <li>No copia GTIN — MercadoLibre no lo muestra en la ficha de la publicación. Sí copia el ISBN cuando está visible.</li>
       <li>No confía en silencio: cuando completa algo por aproximación, o cuando agrega una opción nueva a una lista, lo marca aparte en vez de darlo por bueno — igual conviene revisar, sobre todo en listas cerradas (ej. un pedal cargado como "Guitarra" puede pegarse como "Guitarra acústica").</li>
       <li>Solo lleva la información de un lado al otro — el análisis y la carga fina siguen haciéndose a mano desde BC y el sitio.</li>
@@ -565,7 +590,7 @@
   </section>
 
   <footer>
-    MLF · bookmarklets/copiar.comparator.src.js · bookmarklets/pegar.comparator.src.js · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
+    MLF · bookmarklets/copiar.comparator.src.js · bookmarklets/pegar.comparator.src.js · bookmarklets/copiar.fotos.src.js · bookmarklets/pegar.fotos.src.js · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
     <details class="beta-details">
       <summary>Builds de prueba</summary>
       <p class="beta-warn">
@@ -584,14 +609,6 @@
         <li>
           <a id="mlf-pegar-variante-link" class="beta-link">MLF Pegar Variante <span class="beta-tag">nuevo</span></a>
           <span class="beta-desc">Completa el bloque de una variante nueva, después de que vos clickeaste "Agregar variante" en la herramienta.</span>
-        </li>
-        <li>
-          <a id="mlf-copiar-fotos-link" class="beta-link">Copiar Fotos <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Junta las fotos de la galería de la publicación (en su mayor resolución) y copia sus URLs. Se usa junto con "Pegar Fotos".</span>
-        </li>
-        <li>
-          <a id="mlf-pegar-fotos-link" class="beta-link">Pegar Fotos <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Descarga las fotos copiadas con "Copiar Fotos" y las carga todas juntas en el campo de fotos de la variante — un solo click, no una por una. Corré esto con la sección de fotos de la variante ya abierta en pantalla.</span>
         </li>
       </ul>
     </details>
