@@ -1,15 +1,15 @@
-// MLF - Bookmarklet "Pegar Variante" (PROTOTIPO, no deployado).
+// MLF - Bookmarklet "Pegar Variante". Flujo pensado:
+//   1. "Copiar Variante" parado en el comparador de fichas -> junta SOLO
+//      lo que distingue a esa variante de sus hermanas (título,
+//      descripción, GTIN, atributos hijo — ver copiar.variantes.src.js).
+//   2. Clickeás "Agregar variante" en la herramienta (vos, a mano — este
+//      bookmarklet no lo hace por vos) y dejás esa tarjeta abierta.
+//   3. "Pegar Variante" completa SOLO la tarjeta que tenés abierta en
+//      pantalla con eso.
 //
-// Complementa "MLF Pegar" (pegar.src.js, sin cambios) para el caso de
-// publicaciones con varias variantes de color/diseño/etc. Flujo pensado:
-//   1. "MLF Copiar Variantes" en la publicación de ML -> junta TODAS las
-//      variantes en un solo paquete (ver copiar.variantes.src.js).
-//   2. En la herramienta interna: "MLF Pegar" (el de siempre, sin tocar)
-//      completa el producto base con la primera variante.
-//   3. Clickeás "Agregar otra variante" en la herramienta (vos, a mano —
-//      este bookmarklet no lo hace por vos) y dejás esa tarjeta abierta.
-//   4. "MLF Pegar Variante" -> elegís cuál de las variantes restantes
-//      querés y completa SOLO la tarjeta que tenés abierta en pantalla.
+// También acepta el payload viejo de "MLF Copiar"/"Copiar Comparator"
+// (un único bloque de atributos, sin distinguir padre/hijo) — sirve igual
+// para completar una tarjeta de variante nueva con esos datos.
 //
 // CONFIRMADO EN VIVO (categoryId=MLA1055, "Moto G47"): la herramienta real
 // es un ACORDEÓN estricto — "Características del producto" y cada
@@ -48,7 +48,7 @@
       /* el navegador bloqueó la lectura del portapapeles por script */
     }
     return window.prompt(
-      "Pegá acá el texto copiado con 'MLF Copiar Variantes' (Ctrl+V):",
+      "Pegá acá el texto copiado con 'Copiar Variante' (Ctrl+V):",
       ""
     );
   }
@@ -239,6 +239,12 @@
     return open || document;
   }
 
+  // Ver misma mejora en pegar.comparator.src.js: también matchea un name
+  // ANIDADO bajo un prefijo (ej. "variante.color[0]"), no solo uno que
+  // empieza directamente con el id — la herramienta anida algunos campos
+  // de variante así. Sin este patrón extra, un atributo copiado desde el
+  // comparador (ej. "Copiar Variante") podía quedar sin resolver por id
+  // aunque el id era correcto.
   function findFieldByName(scopeRoot, id) {
     let escaped;
     try {
@@ -246,12 +252,12 @@
     } catch (_) {
       escaped = null;
     }
-    const byAttr = escaped ? scopeRoot.querySelector(`[name^="${escaped}["]`) : null;
+    const byAttr = escaped ? scopeRoot.querySelector(`[name^="${escaped}["], [name*=".${escaped}["]`) : null;
     if (byAttr) return byAttr;
     return (
       Array.from(scopeRoot.querySelectorAll("input,select,textarea")).find((cand) => {
         const name = cand.getAttribute("name") || "";
-        return name === id || name.startsWith(`${id}[`);
+        return name === id || name.startsWith(`${id}[`) || name.includes(`.${id}[`);
       }) || null
     );
   }
@@ -635,7 +641,7 @@
   try {
     payload = JSON.parse(raw);
   } catch (err) {
-    showSummary("El texto pegado no es válido (¿copiaste bien con 'MLF Copiar Variantes'?).");
+    showSummary("El texto pegado no es válido (¿copiaste bien con 'Copiar Variante'?).");
     return;
   }
 

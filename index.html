@@ -582,7 +582,7 @@
       <li>No corre solo: cada paso empieza con un click tuyo, nunca con un timer.</li>
       <li>No manda datos a ningún servidor propio — el único destino es el formulario que ya tenés en pantalla.</li>
       <li>Los atributos y las fotos van por separado: "Copiar/Pegar Comparator" e "Item" solo llevan atributos; las fotos las llevan "Copiar Fotos"/"Pegar Fotos" (todas las de la galería, en su mayor resolución, sin videos). "Pegar Fotos" se corre con la sección de fotos de la variante ya abierta.</li>
-      <li>No copia GTIN — MercadoLibre no lo muestra en la ficha de la publicación. Sí copia el ISBN cuando está visible.</li>
+      <li>"Copiar Item"/"Copiar Comparator" no copian GTIN — MercadoLibre no lo muestra en la ficha de la publicación suelta (sí copian el ISBN cuando está visible). "Copiar Variante" sí lo trae, porque en el comparador aparece como un atributo más.</li>
       <li>No confía en silencio: cuando completa algo por aproximación, o cuando agrega una opción nueva a una lista, lo marca aparte en vez de darlo por bueno — igual conviene revisar, sobre todo en listas cerradas (ej. un pedal cargado como "Guitarra" puede pegarse como "Guitarra acústica").</li>
       <li>Solo lleva la información de un lado al otro — el análisis y la carga fina siguen haciéndose a mano desde BC y el sitio.</li>
       <li>Es un prototipo para mostrar al equipo, no para generalizar en catálogo real sin luz verde.</li>
@@ -603,12 +603,12 @@
           <span class="beta-desc">Si la publicación tiene varios colores, solo avisa — no las recorre.</span>
         </li>
         <li>
-          <a id="mlf-copiar-variantes-link" class="beta-link">MLF Copiar Variantes <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Si hay variantes, primero pregunta: copiar solo la que tenés abierta, o recorrerlas todas y juntarlas en un solo copiado.</span>
+          <a id="mlf-copiar-variantes-link" class="beta-link">Copiar Variante <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Parado en el comparador de fichas: copia SOLO lo que distingue esta variante de sus hermanas — título, descripción, GTIN y los atributos que varían (Color, Memoria...). Si la publicación no tiene nada que las distinga, avisa que no se puede usar ahí.</span>
         </li>
         <li>
-          <a id="mlf-pegar-variante-link" class="beta-link">MLF Pegar Variante <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Completa el bloque de una variante nueva, después de que vos clickeaste "Agregar variante" en la herramienta.</span>
+          <a id="mlf-pegar-variante-link" class="beta-link">Pegar Variante <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Completa el bloque de una variante nueva, después de que vos clickeaste "Agregar variante" en la herramienta. Se usa junto con "Copiar Variante".</span>
         </li>
       </ul>
     </details>
