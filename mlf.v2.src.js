@@ -1108,6 +1108,55 @@
   // entre "Comparator" y "Variante" al copiar.
   // ============================================================
 
+  /**
+   * Header compartido por los overlays de "copiar" (showAttributePicker,
+   * runFotosCopy): título + flechita "←" para volver al menú (por si
+   * clickeaste la opción que no era — ej. "Copiar Comparator" cuando en
+   * realidad solo querías "Copiar Fotos") + "✕" para cerrar sin volver a
+   * nada. onBack cierra cualquier overlay/toast abierto antes de reabrir
+   * el menú, así no queda nada viejo tapando atrás.
+   */
+  function buildOverlayHeader(titleText) {
+    const header = document.createElement("div");
+    header.style.cssText =
+      "display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600;gap:8px";
+
+    const left = document.createElement("div");
+    left.style.cssText = "display:flex;align-items:center;gap:6px;min-width:0";
+
+    const backBtn = document.createElement("button");
+    backBtn.type = "button";
+    backBtn.textContent = "←";
+    backBtn.title = "Volver al menú";
+    backBtn.style.cssText =
+      "border:none;background:none;cursor:pointer;font-size:15px;color:#6b7280;flex:0 0 auto;padding:0;line-height:1";
+    backBtn.onclick = () => {
+      document.getElementById("mlf-bk-overlay")?.remove();
+      document.getElementById("mlf-bk-fotos-overlay")?.remove();
+      buildMenu();
+    };
+
+    const titleEl = document.createElement("div");
+    titleEl.style.cssText = "overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    titleEl.textContent = titleText;
+
+    left.appendChild(backBtn);
+    left.appendChild(titleEl);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.textContent = "✕";
+    closeBtn.style.cssText = "border:none;background:none;cursor:pointer;font-size:14px;color:#6b7280;flex:0 0 auto";
+    closeBtn.onclick = () => {
+      document.getElementById("mlf-bk-overlay")?.remove();
+      document.getElementById("mlf-bk-fotos-overlay")?.remove();
+    };
+
+    header.appendChild(left);
+    header.appendChild(closeBtn);
+    return header;
+  }
+
   function showAttributePicker({ headerText, attributes, images, notice, emptyText, copyButtonText, pasteHintLabel }) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
@@ -1123,16 +1172,7 @@
       "display:flex", "flex-direction:column", "overflow:hidden",
     ].join(";");
 
-    const header = document.createElement("div");
-    header.style.cssText =
-      "display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600";
-    header.textContent = headerText;
-    const closeBtn = document.createElement("button");
-    closeBtn.textContent = "✕";
-    closeBtn.style.cssText = "border:none;background:none;cursor:pointer;font-size:14px;color:#6b7280";
-    closeBtn.onclick = () => overlay.remove();
-    header.appendChild(closeBtn);
-    overlay.appendChild(header);
+    overlay.appendChild(buildOverlayHeader(headerText));
 
     if (notice) {
       const noticeEl = document.createElement("div");
@@ -1467,15 +1507,7 @@
       "display:flex", "flex-direction:column", "overflow:hidden",
     ].join(";");
 
-    const header = document.createElement("div");
-    header.style.cssText =
-      "display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600";
-    header.textContent = "MLF — Fotos (" + images.length + ")";
-    const closeBtn = document.createElement("button");
-    closeBtn.textContent = "✕";
-    closeBtn.style.cssText = "border:none;background:none;cursor:pointer;font-size:14px;color:#6b7280";
-    closeBtn.onclick = () => overlay.remove();
-    header.appendChild(closeBtn);
+    const header = buildOverlayHeader("MLF — Fotos (" + images.length + ")");
 
     const list = document.createElement("div");
     list.style.cssText = "overflow-y:auto;padding:8px;flex:1;display:flex;flex-wrap:wrap;gap:8px";
@@ -1594,22 +1626,22 @@
     {
       label: "Comparator",
       items: [
-        { glyph: "↳", text: "Copiar Comparator", run: runComparatorCopy },
-        { glyph: "↲", text: "Pegar Comparator", run: runComparatorPaste },
+        { text: "Copiar Comp", run: runComparatorCopy },
+        { text: "Pegar Comp", run: runComparatorPaste },
       ],
     },
     {
       label: "Variante",
       items: [
-        { glyph: "↳", text: "Copiar Variante", run: runVarianteCopy },
-        { glyph: "↲", text: "Pegar Variante", run: runVariantePaste },
+        { text: "Copiar Variante", run: runVarianteCopy },
+        { text: "Pegar Variante", run: runVariantePaste },
       ],
     },
     {
       label: "Fotos",
       items: [
-        { glyph: "↳", text: "Copiar Fotos", run: runFotosCopy },
-        { glyph: "↲", text: "Pegar Fotos", run: runFotosPaste },
+        { text: "Copiar Fotos", run: runFotosCopy },
+        { text: "Pegar Fotos", run: runFotosPaste },
       ],
     },
   ];
@@ -1651,21 +1683,21 @@
       groupEl.appendChild(labelEl);
 
       const row = document.createElement("div");
-      row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+      row.style.cssText = "display:flex;gap:8px";
       group.items.forEach((item) => {
         const btn = document.createElement("button");
         btn.type = "button";
+        // Ancho fijo (no flex: crece/achica según el texto) para que los 6
+        // botones del menú midan exactamente lo mismo, sin importar el
+        // grupo — "Pegar Variante" es el texto más largo, el resto queda
+        // centrado en el mismo ancho.
         btn.style.cssText = [
-          "flex:1 1 auto", "display:inline-flex", "align-items:center", "gap:6px",
-          "justify-content:center", "padding:9px 10px", "border:none", "border-radius:7px",
+          "width:124px", "flex:0 0 auto", "display:flex", "align-items:center",
+          "justify-content:center", "padding:9px 6px", "border:none", "border-radius:7px",
           "background:#3483fa", "color:#fff", "font-weight:600", "font-size:12.5px",
-          "cursor:pointer", "white-space:nowrap",
+          "cursor:pointer", "white-space:nowrap", "overflow:hidden", "text-overflow:ellipsis",
         ].join(";");
-        const glyph = document.createElement("span");
-        glyph.style.cssText = "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;opacity:.85";
-        glyph.textContent = item.glyph;
-        btn.appendChild(glyph);
-        btn.appendChild(document.createTextNode(item.text));
+        btn.textContent = item.text;
         btn.onmouseenter = () => (btn.style.filter = "brightness(.92)");
         btn.onmouseleave = () => (btn.style.filter = "none");
         btn.onclick = () => {
