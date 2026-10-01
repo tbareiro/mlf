@@ -599,6 +599,10 @@
       </p>
       <ul class="beta-list">
         <li>
+          <a id="mlf-v2-link" class="beta-link">MLF V2 <span class="beta-tag">nuevo</span></a>
+          <span class="beta-desc">Un solo botón con menú: Comparator / Variante / Fotos. Detecta sola si estás copiando (ML/comparador) o pegando (herramienta interna) y hace lo que corresponda — no hay que elegir "Copiar" o "Pegar" a mano. Junta en un solo lugar a Copiar/Pegar Comparator, Copiar/Pegar Variante y Copiar/Pegar Fotos de abajo.</span>
+        </li>
+        <li>
           <a id="mlf-copiar-beta-link" class="beta-link">MLF Copiar <span class="beta-tag">avisa variantes</span></a>
           <span class="beta-desc">Si la publicación tiene varios colores, solo avisa — no las recorre.</span>
         </li>
@@ -622,6 +626,7 @@
 <script src="copiar.comparator.url.js"></script>
 <script src="pegar.comparator.url.js"></script>
 <script src="copiar.fotos.url.js"></script>
+<script src="mlf.v2.url.js"></script>
 <script src="pegar.fotos.url.js"></script>
 <script>
   document.getElementById("mlf-copiar-link").href = window.MLF_COPIAR_HREF;
@@ -633,6 +638,7 @@
   document.getElementById("mlf-pegar-comparator-link").href = window.MLF_PEGAR_COMPARATOR_HREF;
   document.getElementById("mlf-copiar-fotos-link").href = window.MLF_COPIAR_FOTOS_HREF;
   document.getElementById("mlf-pegar-fotos-link").href = window.MLF_PEGAR_FOTOS_HREF;
+  document.getElementById("mlf-v2-link").href = window.MLF_V2_HREF;
 </script>
 
 <script>
