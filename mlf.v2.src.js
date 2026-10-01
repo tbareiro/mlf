@@ -1,21 +1,17 @@
-// MLF V2 — un solo bookmarklet con un menú chico (Comparator / Variante /
-// Fotos). Reemplaza, en un solo lugar, a los 6 bookmarklets por separado
-// (Copiar/Pegar Comparator, Copiar/Pegar Variante, Copiar/Pegar Fotos) — la
-// lógica de cada uno es la misma que esos archivos, solo que acá vive junta
-// y el menú elige sola si corresponde copiar o pegar según la página.
+// MLF V2 — un solo bookmarklet con un menú chico, agrupado igual que la
+// barra de favoritos de siempre: 3 grupos (Comparator / Variante / Fotos),
+// cada uno con su par de botones "Copiar X" / "Pegar X" — reemplaza, en un
+// solo lugar, a los 6 bookmarklets por separado. La lógica de cada botón
+// es la misma que esos archivos (copiar/pegar.comparator.src.js,
+// copiar.variantes.src.js, pegar.variante.src.js, copiar/pegar.fotos.src.js),
+// solo que acá vive junta.
 //
-// Cómo detecta copiar vs. pegar: cada opción del menú corre del lado
-// "copiar" si la página tiene pinta de ser del lado de ML (ficha pública,
-// comparador, o el carrusel de fotos de la herramienta interna) — y del
-// lado "pegar" si no. Es la misma heurística, aplicada una vez
-// (isCopySide), para las 3 opciones — no hace falta elegir "Copiar" o
-// "Pegar" a mano en ningún lado.
-//
-// Para distribuir en una sola publicación de ML/comparador, podés elegir
-// "Comparator" (todos los atributos) o "Variante" (SOLO lo que distingue
-// a esta variante de sus hermanas — ver más abajo). "Fotos" sirve para las
-// dos: copia la galería de fotos sin importar si estás armando el
-// producto base o agregando una variante.
+// "Copiar Comparator" y "Copiar Variante" también dejan elegir fotos de la
+// galería en el mismo picker (checkboxes aparte, abajo de los atributos) —
+// así un solo "Copiar" lleva atributos y fotos juntos, sin tener que correr
+// "Copiar Fotos" aparte. "Pegar Comparator"/"Pegar Variante" pegan las dos
+// cosas si el payload las trae. "Copiar Fotos"/"Pegar Fotos" se mantienen
+// aparte para cuando hace falta llevar fotos sueltas, sin atributos.
 
 (function () {
   "use strict";
@@ -572,6 +568,10 @@
    * conviene abrir las secciones colapsadas antes de buscar campos) — para
    * "Variante" NO se usa: abrir/cerrar rompería el acordeón de a una
    * tarjeta (ver getScopeRoot).
+   *
+   * Devuelve { parts, detailLines } en vez de mostrar el toast directo —
+   * así quien llama puede combinarlo con el resultado de pegar fotos en
+   * un solo resumen (ver pasteImages / runComparatorPaste).
    */
   async function pasteAttributes(attributes, { scopeRoot, expand }) {
     if (expand) await expandCollapsedSections();
@@ -644,7 +644,45 @@
     if (results.protegido.length) detailLines.push(`Protegidos (sin tocar): ${results.protegido.join(", ")}`);
     if (results.sinMatch.length) detailLines.push(`Sin match: ${results.sinMatch.join(", ")}`);
 
-    showToast(parts.join(" · "), detailLines);
+    return { parts, detailLines };
+  }
+
+  /**
+   * Pegado de fotos, reutilizado por "Comparator"/"Variante" (cuando el
+   * payload copiado también trae imágenes — ver showAttributePicker) y
+   * por "Fotos" en solitario. Devuelve { parts, detailLines } igual que
+   * pasteAttributes, para poder combinar los dos resúmenes en un solo
+   * toast cuando se pegan juntos.
+   */
+  async function pasteImages(urls) {
+    const input = findPhotoInput();
+    if (!input) {
+      return {
+        parts: ["fotos: sin campo visible"],
+        detailLines: ["Fotos: abrí la sección de fotos de la variante y volvé a correr esto."],
+      };
+    }
+    const results = await Promise.allSettled(urls.map((url, i) => urlToFile(url, i)));
+    const files = [];
+    const failed = [];
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") files.push(r.value);
+      else failed.push(i + 1);
+    });
+    if (!files.length) {
+      return {
+        parts: ["0 fotos pegadas"],
+        detailLines: failed.length ? [`Fotos: no se pudo descargar ninguna (fallaron: ${failed.join(", ")})`] : [],
+      };
+    }
+    const dt = new DataTransfer();
+    files.forEach((f) => dt.items.add(f));
+    input.files = dt.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return {
+      parts: [`${files.length} foto(s) pegada(s)`],
+      detailLines: failed.length ? [`Fotos: ${failed.length} fallaron (foto ${failed.join(", ")})`] : [],
+    };
   }
 
   // ============================================================
@@ -1048,10 +1086,6 @@
     return extractFallbackSingleImage();
   }
 
-  function isFotosSourcePresent() {
-    return !!(document.querySelector(".img-carousel") || document.querySelector(".ui-pdp-gallery__figure, [class*='gallery__figure']"));
-  }
-
   // ============================================================
   // Fotos — lado "pegar"
   // ============================================================
@@ -1070,29 +1104,14 @@
   }
 
   // ============================================================
-  // Detección global copiar vs. pegar
-  // ============================================================
-
-  /**
-   * true si la página tiene pinta de ser "del lado de ML" (ficha pública
-   * ui-pdp-*, comparador, o el carrusel de fotos .img-carousel que usa el
-   * comparador) — en ese caso cada opción del menú COPIA. Si no, se asume
-   * que estamos en la herramienta interna y cada opción PEGA.
-   */
-  function isCopySide() {
-    return !!document.querySelector(
-      "[class*='ui-pdp'], .comparator-result__attr-group, .attr-row, table.comparator-result_table, .img-carousel"
-    );
-  }
-
-  // ============================================================
   // UI: overlay de atributos (checkboxes + valor editable) — compartido
   // entre "Comparator" y "Variante" al copiar.
   // ============================================================
 
-  function showAttributePicker({ headerText, attributes, notice, emptyText, copyButtonText, pasteHintLabel }) {
+  function showAttributePicker({ headerText, attributes, images, notice, emptyText, copyButtonText, pasteHintLabel }) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
+    images = images || [];
 
     const overlay = document.createElement("div");
     overlay.id = OVERLAY_ID;
@@ -1123,7 +1142,7 @@
       overlay.appendChild(noticeEl);
     }
 
-    if (!attributes.length) {
+    if (!attributes.length && !images.length) {
       const msg = document.createElement("div");
       msg.style.cssText = "padding:16px 14px;color:#374151;line-height:1.5";
       msg.textContent = emptyText;
@@ -1188,6 +1207,40 @@
       list.appendChild(row);
     });
 
+    // Fotos (opcional): se cuelan en el mismo picker, abajo de los
+    // atributos, con su propia grilla de miniaturas + checkbox — así
+    // "Copiar Comparator"/"Copiar Variante" copian atributos y fotos en
+    // un solo paso, sin tener que correr "Copiar Fotos" aparte.
+    const imageCheckboxes = [];
+    if (images.length) {
+      const imagesHeading = document.createElement("div");
+      imagesHeading.style.cssText =
+        "padding:10px 4px 4px;font-weight:600;font-size:12px;color:#1f2328;border-top:1px solid #f1f2f4;margin-top:4px";
+      imagesHeading.textContent = "Fotos (" + images.length + ")";
+      list.appendChild(imagesHeading);
+
+      const imagesGrid = document.createElement("div");
+      imagesGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;padding:6px 4px";
+      images.forEach((image, idx) => {
+        const cell = document.createElement("label");
+        cell.style.cssText =
+          "position:relative;width:64px;height:64px;border-radius:6px;overflow:hidden;cursor:pointer;display:block";
+        const img = document.createElement("img");
+        img.src = image.thumb;
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block";
+        cell.appendChild(img);
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = true;
+        cb.dataset.idx = String(idx);
+        cb.style.cssText = "position:absolute;top:3px;left:3px;cursor:pointer";
+        imageCheckboxes.push(cb);
+        cell.appendChild(cb);
+        imagesGrid.appendChild(cell);
+      });
+      list.appendChild(imagesGrid);
+    }
+
     const footer = document.createElement("div");
     footer.style.cssText = "padding:8px 12px 12px;border-top:1px solid #e5e7eb";
 
@@ -1207,18 +1260,28 @@
           return { ...attributes[idx], value: valueEls[idx].textContent.trim() };
         })
         .filter((attr) => attr.value.length > 0);
-      if (!selected.length) {
-        status.textContent = "Seleccioná al menos un atributo con un valor.";
+      const selectedImages = imageCheckboxes
+        .filter((cb) => cb.checked)
+        .map((cb) => images[Number(cb.dataset.idx)].url);
+      if (!selected.length && !selectedImages.length) {
+        status.textContent = "Seleccioná al menos un atributo o una foto.";
         return;
       }
       const payload = JSON.stringify({
         v: 1,
         source: location.href,
         attributes: selected.map(({ id, label, value, multiValue, scope }) => ({ id, label, value, multiValue, scope })),
+        images: selectedImages,
       });
+      const countLabel = [
+        selected.length ? `${selected.length} atributo(s)` : null,
+        selectedImages.length ? `${selectedImages.length} foto(s)` : null,
+      ]
+        .filter(Boolean)
+        .join(" + ");
       try {
         await navigator.clipboard.writeText(payload);
-        status.textContent = `Copiado (${selected.length}). Andá a la herramienta interna y usá "MLF V2 → ${pasteHintLabel}".`;
+        status.textContent = `Copiado (${countLabel}). Andá a la herramienta interna y usá "MLF V2 → ${pasteHintLabel}".`;
       } catch (err) {
         const ta = document.createElement("textarea");
         ta.value = payload;
@@ -1228,7 +1291,7 @@
         const ok = document.execCommand("copy");
         ta.remove();
         status.textContent = ok
-          ? `Copiado (${selected.length}). Usá "MLF V2 → ${pasteHintLabel}".`
+          ? `Copiado (${countLabel}). Usá "MLF V2 → ${pasteHintLabel}".`
           : "No se pudo copiar. Probá seleccionar manualmente.";
       }
     };
@@ -1278,6 +1341,7 @@
     showAttributePicker({
       headerText: "MLF — Atributos (" + attributes.length + ")",
       attributes,
+      images: extractGalleryImages(),
       notice,
       emptyText: "No se encontraron atributos en esta página.",
       copyButtonText: "Copiar seleccionados",
@@ -1298,12 +1362,20 @@
       showToast('El texto pegado no es válido (¿copiaste bien con "Comparator"?).');
       return;
     }
-    const attributes = payload && payload.attributes;
-    if (!attributes || !attributes.length) {
-      showToast("No hay atributos en los datos pegados.");
+    const attributes = (payload && payload.attributes) || [];
+    const images = (payload && payload.images) || [];
+    if (!attributes.length && !images.length) {
+      showToast("No hay atributos ni fotos en los datos pegados.");
       return;
     }
-    await pasteAttributes(attributes, { scopeRoot: document, expand: true });
+    const attrResult = attributes.length
+      ? await pasteAttributes(attributes, { scopeRoot: document, expand: true })
+      : { parts: [], detailLines: [] };
+    const imgResult = images.length ? await pasteImages(images) : { parts: [], detailLines: [] };
+    showToast(
+      [...attrResult.parts, ...imgResult.parts].join(" · "),
+      [...attrResult.detailLines, ...imgResult.detailLines]
+    );
   }
 
   // ============================================================
@@ -1336,6 +1408,7 @@
     showAttributePicker({
       headerText: "MLF — Copiar Variante",
       attributes,
+      images: extractGalleryImages(),
       emptyText: "",
       copyButtonText: "Copiar variante",
       pasteHintLabel: "Variante",
@@ -1355,15 +1428,23 @@
       showToast('El texto pegado no es válido (¿copiaste bien con "Variante"?).');
       return;
     }
-    const attributes = payload && payload.attributes;
-    if (!attributes || !attributes.length) {
-      showToast("No hay atributos en los datos pegados.");
+    const attributes = (payload && payload.attributes) || [];
+    const images = (payload && payload.images) || [];
+    if (!attributes.length && !images.length) {
+      showToast("No hay atributos ni fotos en los datos pegados.");
       return;
     }
     // Se apunta a la tarjeta que esté abierta EN ESTE MOMENTO (ver
     // getScopeRoot) — sin auto-expandir nada, para no romper el acordeón
     // de a una tarjeta a la vez.
-    await pasteAttributes(attributes, { scopeRoot: getScopeRoot(), expand: false });
+    const attrResult = attributes.length
+      ? await pasteAttributes(attributes, { scopeRoot: getScopeRoot(), expand: false })
+      : { parts: [], detailLines: [] };
+    const imgResult = images.length ? await pasteImages(images) : { parts: [], detailLines: [] };
+    showToast(
+      [...attrResult.parts, ...imgResult.parts].join(" · "),
+      [...attrResult.detailLines, ...imgResult.detailLines]
+    );
   }
 
   // ============================================================
@@ -1491,49 +1572,53 @@
       showToast("No hay fotos en los datos pegados.");
       return;
     }
-    const input = findPhotoInput();
-    if (!input) {
-      showToast("No encontré un campo de fotos visible.", [
-        "Abrí la sección de fotos de la variante y volvé a correr esto.",
-      ]);
-      return;
-    }
-
     showToast(`Descargando ${urls.length} foto(s)...`);
-
-    const results = await Promise.allSettled(urls.map((url, i) => urlToFile(url, i)));
-    const files = [];
-    const failed = [];
-    results.forEach((r, i) => {
-      if (r.status === "fulfilled") files.push(r.value);
-      else failed.push(i + 1);
-    });
-
-    if (!files.length) {
-      showToast("No se pudo descargar ninguna foto.", failed.length ? [`Fallaron: ${failed.join(", ")}`] : []);
-      return;
-    }
-
-    const dt = new DataTransfer();
-    files.forEach((f) => dt.items.add(f));
-    input.files = dt.files;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-
-    showToast(
-      `${files.length} foto(s) pegada(s).`,
-      failed.length ? [`${failed.length} fallaron (foto ${failed.join(", ")}) — probá copiarlas de nuevo.`] : []
-    );
+    const result = await pasteImages(urls);
+    showToast(result.parts.join(" · "), result.detailLines);
   }
 
   // ============================================================
   // Menú principal
   // ============================================================
 
+  /**
+   * Botones explícitos de Copiar/Pegar por grupo (no auto-detección) —
+   * pedido expreso: el menú tiene que mantener el mismo patrón de
+   * botones separados que la barra de favoritos de siempre (ver
+   * index.html), solo que agrupados en un menú en vez de ocupar 6 lugares
+   * en la barra. "Comparator" y "Variante" ya incluyen las fotos de la
+   * galería en su propio picker (ver showAttributePicker) — "Fotos" queda
+   * aparte para cuando hace falta llevar fotos sueltas, sin atributos.
+   */
+  const MENU_GROUPS = [
+    {
+      label: "Comparator",
+      items: [
+        { glyph: "↳", text: "Copiar Comparator", run: runComparatorCopy },
+        { glyph: "↲", text: "Pegar Comparator", run: runComparatorPaste },
+      ],
+    },
+    {
+      label: "Variante",
+      items: [
+        { glyph: "↳", text: "Copiar Variante", run: runVarianteCopy },
+        { glyph: "↲", text: "Pegar Variante", run: runVariantePaste },
+      ],
+    },
+    {
+      label: "Fotos",
+      items: [
+        { glyph: "↳", text: "Copiar Fotos", run: runFotosCopy },
+        { glyph: "↲", text: "Pegar Fotos", run: runFotosPaste },
+      ],
+    },
+  ];
+
   function buildMenu() {
     const menu = document.createElement("div");
     menu.id = MENU_ID;
     menu.style.cssText = [
-      "position:fixed", "top:16px", "right:16px", "width:260px",
+      "position:fixed", "top:16px", "right:16px", "width:300px",
       "background:#fff", "color:#1f2328", "border-radius:10px",
       "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
       "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
@@ -1551,57 +1636,49 @@
     header.appendChild(closeBtn);
     menu.appendChild(header);
 
-    const copySide = isCopySide();
-    const modeHint = document.createElement("div");
-    modeHint.style.cssText = "padding:6px 12px;font-size:11px;color:#8a8f98;border-bottom:1px solid #f1f2f4";
-    modeHint.textContent = copySide ? "Copiando desde esta página" : "Pegando en esta página";
-    menu.appendChild(modeHint);
+    const body = document.createElement("div");
+    body.style.cssText = "display:flex;flex-direction:column;gap:14px;padding:12px;";
 
-    const options = [
-      {
-        label: "Comparator",
-        desc: "Todos los atributos (o la publicación suelta, si no hay comparador)",
-        run: () => (copySide ? runComparatorCopy() : runComparatorPaste()),
-      },
-      {
-        label: "Variante",
-        desc: "Solo lo que distingue esta variante — título, descripción, GTIN, hijo",
-        run: () => (copySide ? runVarianteCopy() : runVariantePaste()),
-      },
-      {
-        label: "Fotos",
-        desc: "Todas las fotos de la galería, sin videos",
-        run: () => (copySide ? runFotosCopy() : runFotosPaste()),
-      },
-    ];
+    MENU_GROUPS.forEach((group) => {
+      const groupEl = document.createElement("div");
+      groupEl.style.cssText = "display:flex;flex-direction:column;gap:6px";
 
-    const list = document.createElement("div");
-    options.forEach((opt) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.style.cssText = [
-        "display:block", "width:100%", "text-align:left", "padding:10px 12px",
-        "border:none", "border-bottom:1px solid #f1f2f4", "background:#fff",
-        "cursor:pointer",
-      ].join(";");
-      const title = document.createElement("div");
-      title.style.cssText = "font-weight:600;color:#1f2328;font-size:13px";
-      title.textContent = opt.label;
-      const desc = document.createElement("div");
-      desc.style.cssText = "font-size:11px;color:#8a8f98;margin-top:2px;line-height:1.3";
-      desc.textContent = opt.desc;
-      btn.appendChild(title);
-      btn.appendChild(desc);
-      btn.onmouseenter = () => (btn.style.background = "#f6f7fb");
-      btn.onmouseleave = () => (btn.style.background = "#fff");
-      btn.onclick = () => {
-        menu.remove();
-        opt.run();
-      };
-      list.appendChild(btn);
+      const labelEl = document.createElement("div");
+      labelEl.style.cssText =
+        "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.06em;" +
+        "text-transform:uppercase;color:#8a8f98";
+      labelEl.textContent = group.label;
+      groupEl.appendChild(labelEl);
+
+      const row = document.createElement("div");
+      row.style.cssText = "display:flex;gap:8px;flex-wrap:wrap";
+      group.items.forEach((item) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.style.cssText = [
+          "flex:1 1 auto", "display:inline-flex", "align-items:center", "gap:6px",
+          "justify-content:center", "padding:9px 10px", "border:none", "border-radius:7px",
+          "background:#3483fa", "color:#fff", "font-weight:600", "font-size:12.5px",
+          "cursor:pointer", "white-space:nowrap",
+        ].join(";");
+        const glyph = document.createElement("span");
+        glyph.style.cssText = "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;opacity:.85";
+        glyph.textContent = item.glyph;
+        btn.appendChild(glyph);
+        btn.appendChild(document.createTextNode(item.text));
+        btn.onmouseenter = () => (btn.style.filter = "brightness(.92)");
+        btn.onmouseleave = () => (btn.style.filter = "none");
+        btn.onclick = () => {
+          menu.remove();
+          item.run();
+        };
+        row.appendChild(btn);
+      });
+      groupEl.appendChild(row);
+      body.appendChild(groupEl);
     });
-    menu.appendChild(list);
 
+    menu.appendChild(body);
     document.body.appendChild(menu);
   }
 
