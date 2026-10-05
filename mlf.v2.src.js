@@ -1157,10 +1157,9 @@
     return header;
   }
 
-  function showAttributePicker({ headerText, attributes, images, notice, emptyText, copyButtonText, pasteHintLabel }) {
+  function showAttributePicker({ headerText, attributes, notice, emptyText, copyButtonText, pasteHintLabel }) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
-    images = images || [];
 
     const overlay = document.createElement("div");
     overlay.id = OVERLAY_ID;
@@ -1182,7 +1181,7 @@
       overlay.appendChild(noticeEl);
     }
 
-    if (!attributes.length && !images.length) {
+    if (!attributes.length) {
       const msg = document.createElement("div");
       msg.style.cssText = "padding:16px 14px;color:#374151;line-height:1.5";
       msg.textContent = emptyText;
@@ -1247,40 +1246,6 @@
       list.appendChild(row);
     });
 
-    // Fotos (opcional): se cuelan en el mismo picker, abajo de los
-    // atributos, con su propia grilla de miniaturas + checkbox — así
-    // "Copiar Comparator"/"Copiar Variante" copian atributos y fotos en
-    // un solo paso, sin tener que correr "Copiar Fotos" aparte.
-    const imageCheckboxes = [];
-    if (images.length) {
-      const imagesHeading = document.createElement("div");
-      imagesHeading.style.cssText =
-        "padding:10px 4px 4px;font-weight:600;font-size:12px;color:#1f2328;border-top:1px solid #f1f2f4;margin-top:4px";
-      imagesHeading.textContent = "Fotos (" + images.length + ")";
-      list.appendChild(imagesHeading);
-
-      const imagesGrid = document.createElement("div");
-      imagesGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;padding:6px 4px";
-      images.forEach((image, idx) => {
-        const cell = document.createElement("label");
-        cell.style.cssText =
-          "position:relative;width:64px;height:64px;border-radius:6px;overflow:hidden;cursor:pointer;display:block";
-        const img = document.createElement("img");
-        img.src = image.thumb;
-        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block";
-        cell.appendChild(img);
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = true;
-        cb.dataset.idx = String(idx);
-        cb.style.cssText = "position:absolute;top:3px;left:3px;cursor:pointer";
-        imageCheckboxes.push(cb);
-        cell.appendChild(cb);
-        imagesGrid.appendChild(cell);
-      });
-      list.appendChild(imagesGrid);
-    }
-
     const footer = document.createElement("div");
     footer.style.cssText = "padding:8px 12px 12px;border-top:1px solid #e5e7eb";
 
@@ -1300,25 +1265,16 @@
           return { ...attributes[idx], value: valueEls[idx].textContent.trim() };
         })
         .filter((attr) => attr.value.length > 0);
-      const selectedImages = imageCheckboxes
-        .filter((cb) => cb.checked)
-        .map((cb) => images[Number(cb.dataset.idx)].url);
-      if (!selected.length && !selectedImages.length) {
-        status.textContent = "Seleccioná al menos un atributo o una foto.";
+      if (!selected.length) {
+        status.textContent = "Seleccioná al menos un atributo.";
         return;
       }
       const payload = JSON.stringify({
         v: 1,
         source: location.href,
         attributes: selected.map(({ id, label, value, multiValue, scope }) => ({ id, label, value, multiValue, scope })),
-        images: selectedImages,
       });
-      const countLabel = [
-        selected.length ? `${selected.length} atributo(s)` : null,
-        selectedImages.length ? `${selectedImages.length} foto(s)` : null,
-      ]
-        .filter(Boolean)
-        .join(" + ");
+      const countLabel = `${selected.length} atributo(s)`;
       try {
         await navigator.clipboard.writeText(payload);
         status.textContent = `Copiado (${countLabel}). Andá a la herramienta interna y usá "MLF V2 → ${pasteHintLabel}".`;
@@ -1381,7 +1337,6 @@
     showAttributePicker({
       headerText: "MLF — Atributos (" + attributes.length + ")",
       attributes,
-      images: extractGalleryImages(),
       notice,
       emptyText: "No se encontraron atributos en esta página.",
       copyButtonText: "Copiar seleccionados",
@@ -1448,7 +1403,6 @@
     showAttributePicker({
       headerText: "MLF — Copiar Variante",
       attributes,
-      images: extractGalleryImages(),
       emptyText: "",
       copyButtonText: "Copiar variante",
       pasteHintLabel: "Variante",

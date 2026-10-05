@@ -426,10 +426,28 @@
 <div class="wrap">
   <p class="eyebrow">Catálogo · herramienta interna</p>
   <h1>Llevá los atributos de ML a la ficha de carga sin instalar nada</h1>
-  <p class="lede">Unos pocos bookmarklets — links de favoritos comunes, no extensiones — que arrastrás una vez a la barra de Chrome. El puente entre las dos páginas es el portapapeles del sistema, nada más.</p>
+  <p class="lede">Un bookmarklet — un link de favoritos común, no una extensión — que arrastrás una vez a la barra de Chrome y abre un menú con todo. El puente entre las dos páginas es el portapapeles del sistema, nada más.</p>
 
   <section>
-    <h2>Tu barra de favoritos, con esto agregado</h2>
+    <h2>MLF V2 · versión final</h2>
+    <div class="browser-chrome">
+      <div class="chrome-top">
+        <div class="chrome-dot"></div><div class="chrome-dot"></div><div class="chrome-dot"></div>
+        <div class="chrome-address"></div>
+      </div>
+      <div class="bookmarks-bar">
+        <div class="bk-group">
+          <div class="bk-row">
+            <a class="bk" id="mlf-v2-link">MLF V2</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="drag-hint">arrastrá este botón a tu barra de favoritos (Ctrl+Shift+B si no la tenés visible). Al tocarlo abre un menú: Copiar/Pegar Comp, Copiar/Pegar Variante y Copiar/Pegar Fotos — reemplaza a los 6 botones sueltos de abajo.</p>
+  </section>
+
+  <section>
+    <h2>Versiones viejas · botones sueltos</h2>
     <div class="browser-chrome">
       <div class="chrome-top">
         <div class="chrome-dot"></div><div class="chrome-dot"></div><div class="chrome-dot"></div>
@@ -541,7 +559,7 @@
       <li>
         <span class="step-num">01</span>
         <div class="step-body">
-          <div><b>Abrí la publicación</b> y clickeá <b>Copiar Item</b> (o <b>Copiar Comparator</b> si estás en el comparador de fichas).</div>
+          <div><b>Abrí la publicación</b>, clickeá <b>MLF V2</b> y elegí <b>Copiar Comp</b> (comparador de fichas) o <b>Copiar Variante</b>.</div>
           <div class="sub">Evita duplicar el mismo dato con distinto nombre, y separa renglones combinados ("Ancho x Alto: 31 cm x 6 cm") en atributos por separado.</div>
         </div>
       </li>
@@ -554,7 +572,7 @@
       <li>
         <span class="step-num">03</span>
         <div class="step-body">
-          <div><b>Andá a la ficha de carga</b> y clickeá <b>Pegar Item</b> (o <b>Pegar Comparator</b>).</div>
+          <div><b>Andá a la ficha de carga</b>, clickeá <b>MLF V2</b> y elegí <b>Pegar Comp</b> o <b>Pegar Variante</b>.</div>
           <div class="sub">Entiende texto, dropdowns Andes (simples y multi-selección, con opción de agregar), toggles Sí/No, editores enriquecidos y campos "número + unidad". Sin portapapeles por script, te pide pegar con Ctrl+V.</div>
         </div>
       </li>
@@ -581,7 +599,7 @@
       <li>No clickea Guardar, Finalizar ni Enviar — eso queda siempre en tu mano.</li>
       <li>No corre solo: cada paso empieza con un click tuyo, nunca con un timer.</li>
       <li>No manda datos a ningún servidor propio — el único destino es el formulario que ya tenés en pantalla.</li>
-      <li>Los atributos y las fotos van por separado: "Copiar/Pegar Comparator" e "Item" solo llevan atributos; las fotos las llevan "Copiar Fotos"/"Pegar Fotos" (todas las de la galería, en su mayor resolución, sin videos). "Pegar Fotos" se corre con la sección de fotos de la variante ya abierta.</li>
+      <li>Los atributos y las fotos van por separado: "Copiar/Pegar Comp" y "Variante" solo llevan atributos; las fotos las llevan "Copiar Fotos"/"Pegar Fotos" (todas las de la galería, en su mayor resolución, sin videos). "Pegar Fotos" se corre con la sección de fotos de la variante ya abierta.</li>
       <li>"Copiar Item"/"Copiar Comparator" no copian GTIN — MercadoLibre no lo muestra en la ficha de la publicación suelta (sí copian el ISBN cuando está visible). "Copiar Variante" sí lo trae, porque en el comparador aparece como un atributo más.</li>
       <li>No confía en silencio: cuando completa algo por aproximación, o cuando agrega una opción nueva a una lista, lo marca aparte en vez de darlo por bueno — igual conviene revisar, sobre todo en listas cerradas (ej. un pedal cargado como "Guitarra" puede pegarse como "Guitarra acústica").</li>
       <li>Solo lleva la información de un lado al otro — el análisis y la carga fina siguen haciéndose a mano desde BC y el sitio.</li>
@@ -590,18 +608,14 @@
   </section>
 
   <footer>
-    MLF · bookmarklets/copiar.comparator.src.js · bookmarklets/pegar.comparator.src.js · bookmarklets/copiar.fotos.src.js · bookmarklets/pegar.fotos.src.js · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
+    MLF · bookmarklets/mlf.v2.src.js · (viejas) bookmarklets/copiar.comparator.src.js · bookmarklets/pegar.comparator.src.js · bookmarklets/copiar.fotos.src.js · bookmarklets/pegar.fotos.src.js · bookmarklets/copiar.src.js · bookmarklets/pegar.src.js
     <details class="beta-details">
-      <summary>Builds de prueba</summary>
+      <summary>Otras versiones viejas</summary>
       <p class="beta-warn">
         Sin confirmar todavía contra la herramienta interna real (bloqueada por VPN) —
-        probadas contra el flujo público equivalente. No reemplazan a los bookmarklets de arriba.
+        probadas contra el flujo público equivalente. Versiones viejas: la recomendada es MLF V2.
       </p>
       <ul class="beta-list">
-        <li>
-          <a id="mlf-v2-link" class="beta-link">MLF V2 <span class="beta-tag">nuevo</span></a>
-          <span class="beta-desc">Un solo botón con un menú agrupado igual que la barra de arriba (Comparator / Variante / Fotos, cada uno con su par Copiar/Pegar) — junta en un solo lugar a los 6 bookmarklets de abajo. "Copiar Comparator" y "Copiar Variante" además dejan elegir fotos de la galería en el mismo paso, sin tener que correr "Copiar Fotos" aparte.</span>
-        </li>
         <li>
           <a id="mlf-copiar-beta-link" class="beta-link">MLF Copiar <span class="beta-tag">avisa variantes</span></a>
           <span class="beta-desc">Si la publicación tiene varios colores, solo avisa — no las recorre.</span>
