@@ -479,6 +479,27 @@
     return false;
   }
 
+  /**
+   * ¿El campo destino de este atributo está en la sección de la variante?
+   * En la página de creación los campos de la variante viven dentro de
+   * `.child-sections` (y los que tienen name vienen como
+   * `CHILD[n].CODIGO[0]`) — eso cambia por dominio, así que se lee de la
+   * página en vez de tener una lista fija. Busca el campo igual que
+   * fillOne (por código y después por nombre), pero sin tocar nada. Si no
+   * lo encuentra todavía, cuenta como padre (se completa primero).
+   */
+  function isChildTarget(scopeRoot, attr) {
+    let target = attr.id ? findFieldByName(scopeRoot, attr.id) : null;
+    if (!target) {
+      for (const candidateLabel of candidateLabelsFor(attr.label)) {
+        target = findContainerForLabel(scopeRoot, candidateLabel);
+        if (target) break;
+      }
+    }
+    if (!target) return false;
+    return /^CHILD\[/.test(target.getAttribute("name") || "") || !!target.closest(".child-sections");
+  }
+
   async function fillOne(scopeRoot, attr, filledTargets, protectedTargets) {
     if (attr.id) {
       const fieldByName = findFieldByName(scopeRoot, attr.id);
@@ -621,8 +642,11 @@
       }
     }
 
-    const parentAttrs = attributes.filter((a) => a.scope !== "child");
-    const childAttrs = attributes.filter((a) => a.scope === "child");
+    // Si el atributo no trae scope (fuentes sin separación padre/hijo,
+    // como MO), lo decide la propia página de creación: ver isChildTarget.
+    const isChild = (a) => (a.scope ? a.scope === "child" : isChildTarget(scopeRoot, a));
+    const parentAttrs = attributes.filter((a) => !isChild(a));
+    const childAttrs = attributes.filter(isChild);
     await fillList(parentAttrs);
     if (childAttrs.length) {
       await new Promise((r) => setTimeout(r, 400));
@@ -1344,8 +1368,14 @@
     });
   }
 
-  async function runComparatorPaste() {
-    const raw = await getClipboardText("Comparator");
+  function runComparatorPaste() {
+    return pasteFromClipboard("Comparator");
+  }
+
+  // Pegado "a toda la ficha" (sin acordeón de a una tarjeta) — lo comparten
+  // Comparator y MO, solo cambia el nombre del botón en los mensajes.
+  async function pasteFromClipboard(copiedWithLabel) {
+    const raw = await getClipboardText(copiedWithLabel);
     if (!raw) {
       showToast("Cancelado: no hay datos para pegar.");
       return;
@@ -1354,7 +1384,7 @@
     try {
       payload = JSON.parse(raw);
     } catch (err) {
-      showToast('El texto pegado no es válido (¿copiaste bien con "Comparator"?).');
+      showToast(`El texto pegado no es válido (¿copiaste bien con "${copiedWithLabel}"?).`);
       return;
     }
     const attributes = (payload && payload.attributes) || [];
@@ -1371,6 +1401,55 @@
       [...attrResult.parts, ...imgResult.parts].join(" · "),
       [...attrResult.detailLines, ...imgResult.detailLines]
     );
+  }
+
+  // ============================================================
+  // Acciones — MO (visor de sugerencias: "Atributos propuestos")
+  // ============================================================
+
+  // La tabla de MO no separa padre/hijo — los atributos salen sin scope y
+  // al pegar decide la página de creación (ver isChildTarget).
+  function extractFromMOPage() {
+    const out = [];
+    const title = (document.querySelector(".suggestion-title")?.textContent || "").trim();
+    if (title) out.push({ label: "Título", value: title });
+    document.querySelectorAll("table.changes-table tbody tr").forEach((row) => {
+      const cells = row.querySelectorAll("td");
+      if (cells.length < 2) return;
+      const id = (cells[0].querySelector(".attr-id")?.textContent || "").trim();
+      const label = (cells[0].querySelector("strong")?.textContent || "").trim();
+      const value = (cells[1].textContent || "").trim();
+      if (!label || !value || isExcludedAttrId(id)) return;
+      out.push(id ? { id, label, value } : { label, value });
+    });
+    const description = (document.querySelector(".description-preview")?.textContent || "").trim();
+    if (description) out.push({ label: "Descripción", value: description });
+    return out;
+  }
+
+  function runMOCopy() {
+    if (!document.querySelector("table.changes-table")) {
+      showToast('No encontré "Atributos propuestos" — usá "Copiar MO" parado en la sugerencia.');
+      return;
+    }
+    const attributes = dedupeByLabel(
+      extractFromMOPage()
+        .flatMap(splitCombinedDimensions)
+        .flatMap(splitMultiValueAttr)
+        .filter((attr) => !isEmptyPlaceholder(attr.value))
+    );
+    showAttributePicker({
+      headerText: "MLF — Atributos MO (" + attributes.length + ")",
+      attributes,
+      notice: null,
+      emptyText: "No se encontraron atributos en esta sugerencia.",
+      copyButtonText: "Copiar seleccionados",
+      pasteHintLabel: "Pegar MO",
+    });
+  }
+
+  function runMOPaste() {
+    return pasteFromClipboard("Copiar MO");
   }
 
   // ============================================================
@@ -1582,6 +1661,13 @@
       items: [
         { text: "Copiar Comp", run: runComparatorCopy },
         { text: "Pegar Comp", run: runComparatorPaste },
+      ],
+    },
+    {
+      label: "MO",
+      items: [
+        { text: "Copiar MO", run: runMOCopy },
+        { text: "Pegar MO", run: runMOPaste },
       ],
     },
     {
