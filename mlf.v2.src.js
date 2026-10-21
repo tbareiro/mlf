@@ -1181,6 +1181,29 @@
     return header;
   }
 
+  // Atributos "padre" (identifican al producto): si el valor pasa de
+  // PARENT_ATTR_MAX_LENGTH caracteres, el picker avisa en rojo.
+  const PARENT_ATTR_LABELS = ["marca", "linea", "modelo", "modelo alfanumerico"];
+  const PARENT_ATTR_MAX_LENGTH = 30;
+
+  function isParentAttrLabel(label) {
+    const key = String(label || "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    return PARENT_ATTR_LABELS.includes(key);
+  }
+
+  function parentLengthWarning(label, value) {
+    if (!isParentAttrLabel(label)) return "";
+    const len = String(value || "").trim().length;
+    return len > PARENT_ATTR_MAX_LENGTH
+      ? `⚠ Supera los ${PARENT_ATTR_MAX_LENGTH} caracteres (${len}) — acortalo antes de pegar.`
+      : "";
+  }
+
   function showAttributePicker({ headerText, attributes, notice, emptyText, copyButtonText, pasteHintLabel }) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
@@ -1256,6 +1279,18 @@
       valueEls.push(valueEl);
       text.appendChild(labelEl);
       text.appendChild(valueEl);
+
+      const lenWarn = document.createElement("div");
+      lenWarn.style.cssText =
+        "margin-top:3px;font-size:11px;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:5px;padding:3px 6px;display:inline-block";
+      const refreshLenWarn = () => {
+        const msg = parentLengthWarning(attr.label, valueEl.textContent);
+        lenWarn.textContent = msg;
+        lenWarn.style.display = msg ? "inline-block" : "none";
+      };
+      refreshLenWarn();
+      valueEl.addEventListener("input", refreshLenWarn);
+      text.appendChild(lenWarn);
 
       if (attr.possibleDuplicate) {
         const warn = document.createElement("div");
@@ -1643,6 +1678,130 @@
   }
 
   // ============================================================
+  // Rastrear UPC (código universal / GTIN)
+  // ============================================================
+
+  async function copyTextToClipboard(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (err) {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.cssText = "position:fixed;top:-1000px";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    }
+  }
+
+  // Lee los códigos universales cargados en la herramienta interna. Cada
+  // variante tiene un campo `.cp-custom-multivalue-field` con aria-label
+  // "CHILD[n].GTIN" y un tag (`.andes-tag__label`) por código.
+  function extractUniversalCodes() {
+    const out = [];
+    document.querySelectorAll('.cp-custom-multivalue-field[aria-label*="GTIN"]').forEach((field) => {
+      const ariaLabel = field.getAttribute("aria-label") || "";
+      const childMatch = ariaLabel.match(/CHILD\[(\d+)\]/i);
+      const card = field.closest(".expandible-card");
+      const cardTitle = (
+        card?.querySelector(".expandible-card__toggle, h1, h2, h3, h4, [class*='title']")?.textContent || ""
+      )
+        .replace(/\s+/g, " ")
+        .trim();
+      const variantLabel = cardTitle
+        ? cardTitle.slice(0, 60)
+        : childMatch
+          ? `Variante ${Number(childMatch[1]) + 1}`
+          : "Código universal";
+      field.querySelectorAll(".andes-tag__label").forEach((tag) => {
+        const code = (tag.textContent || "").trim();
+        if (code) out.push({ code, variantLabel });
+      });
+    });
+    return out;
+  }
+
+  function buildUpcRow({ code, variantLabel }) {
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px 4px;border-bottom:1px solid #f1f2f4";
+
+    const variantEl = document.createElement("div");
+    variantEl.style.cssText = "font-size:11px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+    variantEl.textContent = variantLabel;
+
+    const line = document.createElement("div");
+    line.style.cssText = "display:flex;gap:8px;align-items:center";
+
+    const codeEl = document.createElement("div");
+    codeEl.style.cssText =
+      "flex:1;min-width:0;font:600 14px ui-monospace,SFMono-Regular,Menlo,monospace;color:#1f2328;word-break:break-all";
+    codeEl.textContent = code;
+
+    const copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.textContent = "Copiar";
+    copyBtn.style.cssText =
+      "flex:0 0 auto;padding:6px 10px;border:none;border-radius:6px;background:#3483fa;color:#fff;font-weight:600;font-size:12px;cursor:pointer";
+    copyBtn.onclick = async () => {
+      const ok = await copyTextToClipboard(code);
+      copyBtn.textContent = ok ? "¡Copiado!" : "Error";
+      setTimeout(() => (copyBtn.textContent = "Copiar"), 1500);
+    };
+
+    // "G": copia el código y abre la búsqueda en Google en otra pestaña.
+    const googleBtn = document.createElement("button");
+    googleBtn.type = "button";
+    googleBtn.textContent = "G";
+    googleBtn.title = "Buscar en Google";
+    googleBtn.style.cssText =
+      "flex:0 0 auto;width:30px;height:30px;border:1px solid #dadce0;border-radius:50%;background:#fff;" +
+      "color:#4285f4;font:700 15px Arial,sans-serif;cursor:pointer;line-height:1;padding:0";
+    googleBtn.onclick = () => {
+      copyTextToClipboard(code);
+      window.open("https://www.google.com/search?q=" + encodeURIComponent(code), "_blank", "noopener");
+    };
+
+    line.appendChild(codeEl);
+    line.appendChild(copyBtn);
+    line.appendChild(googleBtn);
+    row.appendChild(variantEl);
+    row.appendChild(line);
+    return row;
+  }
+
+  function runUpcTrack() {
+    const OVERLAY_ID = "mlf-bk-overlay";
+    document.getElementById(OVERLAY_ID)?.remove();
+    const codes = extractUniversalCodes();
+
+    const overlay = document.createElement("div");
+    overlay.id = OVERLAY_ID;
+    overlay.style.cssText = [
+      "position:fixed", "top:16px", "right:16px", "width:340px", "max-height:80vh",
+      "background:#fff", "color:#1f2328", "border-radius:10px",
+      "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
+      "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
+      "display:flex", "flex-direction:column", "overflow:hidden",
+    ].join(";");
+    overlay.appendChild(buildOverlayHeader(`MLF — Rastrear UPC (${codes.length})`));
+
+    const body = document.createElement("div");
+    if (!codes.length) {
+      body.style.cssText = "padding:16px 14px;color:#374151;line-height:1.5";
+      body.textContent =
+        "No encontré códigos universales en esta página. Abrí la ficha con la sección \"Código universal\" visible.";
+    } else {
+      body.style.cssText = "overflow-y:auto;padding:4px 12px 8px";
+      codes.forEach((entry) => body.appendChild(buildUpcRow(entry)));
+    }
+    overlay.appendChild(body);
+    document.body.appendChild(overlay);
+  }
+
+  // ============================================================
   // Menú principal
   // ============================================================
 
@@ -1683,6 +1842,10 @@
         { text: "Copiar Fotos", run: runFotosCopy },
         { text: "Pegar Fotos", run: runFotosPaste },
       ],
+    },
+    {
+      label: "Código universal",
+      items: [{ text: "Rastrear UPC", run: runUpcTrack }],
     },
   ];
 

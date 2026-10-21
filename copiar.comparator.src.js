@@ -61,6 +61,29 @@
   // Igual que dedupeByLabel en copiar.src.js — se mantiene acá aparte
   // (en vez de compartir un solo archivo) porque cada bookmarklet se
   // instala como un bookmark independiente y tiene que poder correr solo.
+  // Atributos "padre" (identifican al producto): si el valor pasa de
+  // PARENT_ATTR_MAX_LENGTH caracteres, el picker avisa en rojo.
+  const PARENT_ATTR_LABELS = ["marca", "linea", "modelo", "modelo alfanumerico"];
+  const PARENT_ATTR_MAX_LENGTH = 30;
+
+  function isParentAttrLabel(label) {
+    const key = String(label || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+    return PARENT_ATTR_LABELS.includes(key);
+  }
+
+  function parentLengthWarning(label, value) {
+    if (!isParentAttrLabel(label)) return "";
+    const len = String(value || "").trim().length;
+    return len > PARENT_ATTR_MAX_LENGTH
+      ? `⚠ Supera los ${PARENT_ATTR_MAX_LENGTH} caracteres (${len}) — acortalo antes de pegar.`
+      : "";
+  }
+
   function dedupeByLabel(list) {
     const firstByLabel = new Map();
     const firstByValue = new Map();
@@ -475,6 +498,18 @@
     valueEls.push(valueEl);
     text.appendChild(labelEl);
     text.appendChild(valueEl);
+
+    const lenWarn = document.createElement("div");
+    lenWarn.style.cssText =
+      "margin-top:3px;font-size:11px;color:#b42318;background:#fef3f2;border:1px solid #fecdca;border-radius:5px;padding:3px 6px;display:inline-block";
+    const refreshLenWarn = () => {
+      const msg = parentLengthWarning(attr.label, valueEl.textContent);
+      lenWarn.textContent = msg;
+      lenWarn.style.display = msg ? "inline-block" : "none";
+    };
+    refreshLenWarn();
+    valueEl.addEventListener("input", refreshLenWarn);
+    text.appendChild(lenWarn);
 
     if (attr.possibleDuplicate) {
       const warn = document.createElement("div");
