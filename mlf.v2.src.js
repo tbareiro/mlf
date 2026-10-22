@@ -1181,26 +1181,34 @@
     return header;
   }
 
-  // Atributos "padre" (identifican al producto): si el valor pasa de
-  // PARENT_ATTR_MAX_LENGTH caracteres, el picker avisa en rojo.
-  const PARENT_ATTR_LABELS = ["marca", "linea", "modelo", "modelo alfanumerico"];
+  // Largo máximo por atributo. Los "padre" (identifican al producto) tienen
+  // un tope más corto; Título y Descripción no tienen tope; el resto usa
+  // el tope general. Pasarse solo avisa en rojo, no bloquea el copiado.
+  const PARENT_ATTR_LABELS = ["fabricante", "marca", "linea", "modelo", "modelo alfanumerico"];
   const PARENT_ATTR_MAX_LENGTH = 30;
+  const GENERAL_ATTR_MAX_LENGTH = 75;
+  const NO_LENGTH_LIMIT_LABELS = ["titulo", "descripcion"];
 
-  function isParentAttrLabel(label) {
-    const key = String(label || "")
+  function normalizeAttrLabel(label) {
+    return String(label || "")
       .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
+      .replace(/[\u0300-\u036f]/g, "")
       .trim()
       .toLowerCase()
       .replace(/\s+/g, " ");
-    return PARENT_ATTR_LABELS.includes(key);
+  }
+
+  function maxLengthForLabel(label) {
+    const key = normalizeAttrLabel(label);
+    if (NO_LENGTH_LIMIT_LABELS.includes(key)) return Infinity;
+    return PARENT_ATTR_LABELS.includes(key) ? PARENT_ATTR_MAX_LENGTH : GENERAL_ATTR_MAX_LENGTH;
   }
 
   function parentLengthWarning(label, value) {
-    if (!isParentAttrLabel(label)) return "";
+    const max = maxLengthForLabel(label);
     const len = String(value || "").trim().length;
-    return len > PARENT_ATTR_MAX_LENGTH
-      ? `⚠ Supera los ${PARENT_ATTR_MAX_LENGTH} caracteres (${len}) — acortalo antes de pegar.`
+    return len > max
+      ? `⚠ Supera los ${max} caracteres (${len}) — acortalo antes de pegar.`
       : "";
   }
 
@@ -1678,7 +1686,7 @@
   }
 
   // ============================================================
-  // Rastrear UPC (código universal / GTIN)
+  // Rastrear GTIN (código universal)
   // ============================================================
 
   async function copyTextToClipboard(text) {
@@ -1697,40 +1705,91 @@
     }
   }
 
-  // Lee los códigos universales cargados en la herramienta interna. Cada
-  // variante tiene un campo `.cp-custom-multivalue-field` con aria-label
+  // Lee los GTIN (código universal) cargados en la herramienta interna.
+  // Cada variante es un `div#child-N` con una tarjeta `.expandible-card`;
+  // adentro hay un campo `.cp-custom-multivalue-field` con aria-label
   // "CHILD[n].GTIN" y un tag (`.andes-tag__label`) por código.
-  function extractUniversalCodes() {
-    const out = [];
-    document.querySelectorAll('.cp-custom-multivalue-field[aria-label*="GTIN"]').forEach((field) => {
-      const ariaLabel = field.getAttribute("aria-label") || "";
-      const childMatch = ariaLabel.match(/CHILD\[(\d+)\]/i);
-      const card = field.closest(".expandible-card");
-      const cardTitle = (
-        card?.querySelector(".expandible-card__toggle, h1, h2, h3, h4, [class*='title']")?.textContent || ""
-      )
-        .replace(/\s+/g, " ")
-        .trim();
-      const variantLabel = cardTitle
-        ? cardTitle.slice(0, 60)
-        : childMatch
-          ? `Variante ${Number(childMatch[1]) + 1}`
-          : "Código universal";
+  const GTIN_FIELD_SELECTOR = '.cp-custom-multivalue-field[aria-label*="GTIN"]';
+
+  function readGtinCodes(root) {
+    const codes = [];
+    root.querySelectorAll(GTIN_FIELD_SELECTOR).forEach((field) => {
       field.querySelectorAll(".andes-tag__label").forEach((tag) => {
         const code = (tag.textContent || "").trim();
-        if (code) out.push({ code, variantLabel });
+        if (code) codes.push(code);
       });
     });
+    return codes;
+  }
+
+  // Título de la variante: del header de la tarjeta, desde el "#N" en
+  // adelante (el header trae también el id MLMS, estado, etc.).
+  function variantLabelFor(childEl, index) {
+    const header = childEl.querySelector(".expandible-card__header") || childEl;
+    const text = (header.textContent || "").replace(/\s+/g, " ").trim();
+    const m = text.match(/#\d+\s.*/);
+    return (m ? m[0] : `Variante ${index + 1}`).slice(0, 70);
+  }
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Si la tarjeta está colapsada y todavía no tiene el campo GTIN en el
+  // DOM, la abre, espera a que aparezca, lee y la vuelve a cerrar (deja la
+  // pantalla como estaba).
+  async function readGtinCodesExpanding(childEl) {
+    const direct = readGtinCodes(childEl);
+    if (direct.length || childEl.querySelector(GTIN_FIELD_SELECTOR)) return direct;
+    const toggle =
+      childEl.querySelector('.expandible-card__header [aria-expanded]') ||
+      childEl.querySelector("[aria-expanded]") ||
+      childEl.querySelector(".expandible-card__header");
+    if (!toggle || toggle.getAttribute("aria-expanded") === "true") return direct;
+    toggle.click();
+    for (let i = 0; i < 20 && !childEl.querySelector(GTIN_FIELD_SELECTOR); i++) await sleep(100);
+    await sleep(150);
+    const codes = readGtinCodes(childEl);
+    if (toggle.getAttribute("aria-expanded") === "true") toggle.click();
+    return codes;
+  }
+
+  // Devuelve [{ code, variantLabel }] — una entrada por código. Una
+  // variante sin ningún código sale con code "" (se muestra como "sin GTIN").
+  async function extractUniversalCodes() {
+    const children = Array.from(document.querySelectorAll("[id^='child-']"))
+      .filter((el) => /^child-\d+$/.test(el.id))
+      .sort((a, b) => Number(a.id.slice(6)) - Number(b.id.slice(6)));
+
+    if (!children.length) {
+      return readGtinCodes(document).map((code) => ({ code, variantLabel: "Código universal" }));
+    }
+
+    const out = [];
+    for (let i = 0; i < children.length; i++) {
+      const childEl = children[i];
+      const variantLabel = variantLabelFor(childEl, i);
+      const codes = await readGtinCodesExpanding(childEl);
+      if (!codes.length) out.push({ code: "", variantLabel });
+      codes.forEach((code) => out.push({ code, variantLabel }));
+    }
     return out;
   }
 
-  function buildUpcRow({ code, variantLabel }) {
+  function buildGtinRow({ code, variantLabel }) {
     const row = document.createElement("div");
     row.style.cssText = "display:flex;flex-direction:column;gap:6px;padding:8px 4px;border-bottom:1px solid #f1f2f4";
 
     const variantEl = document.createElement("div");
     variantEl.style.cssText = "font-size:11px;color:#6b7280;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
     variantEl.textContent = variantLabel;
+
+    if (!code) {
+      const emptyEl = document.createElement("div");
+      emptyEl.style.cssText = "font-size:12px;color:#9aa1ab;font-style:italic";
+      emptyEl.textContent = "Sin GTIN cargado";
+      row.appendChild(variantEl);
+      row.appendChild(emptyEl);
+      return row;
+    }
 
     const line = document.createElement("div");
     line.style.cssText = "display:flex;gap:8px;align-items:center";
@@ -1772,10 +1831,13 @@
     return row;
   }
 
-  function runUpcTrack() {
+  async function runGtinTrack() {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
-    const codes = extractUniversalCodes();
+    showToast("Leyendo GTIN de las variantes...");
+    const entries = await extractUniversalCodes();
+    document.getElementById("mlf-bk-toast")?.remove();
+    const found = entries.filter((e) => e.code).length;
 
     const overlay = document.createElement("div");
     overlay.id = OVERLAY_ID;
@@ -1786,16 +1848,16 @@
       "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
       "display:flex", "flex-direction:column", "overflow:hidden",
     ].join(";");
-    overlay.appendChild(buildOverlayHeader(`MLF — Rastrear UPC (${codes.length})`));
+    overlay.appendChild(buildOverlayHeader(`MLF — Rastrear GTIN (${found})`));
 
     const body = document.createElement("div");
-    if (!codes.length) {
+    if (!entries.length) {
       body.style.cssText = "padding:16px 14px;color:#374151;line-height:1.5";
       body.textContent =
-        "No encontré códigos universales en esta página. Abrí la ficha con la sección \"Código universal\" visible.";
+        "No encontré GTIN en esta página. Abrí la ficha con la sección \"Código universal\" de las variantes.";
     } else {
       body.style.cssText = "overflow-y:auto;padding:4px 12px 8px";
-      codes.forEach((entry) => body.appendChild(buildUpcRow(entry)));
+      entries.forEach((entry) => body.appendChild(buildGtinRow(entry)));
     }
     overlay.appendChild(body);
     document.body.appendChild(overlay);
@@ -1845,7 +1907,7 @@
     },
     {
       label: "Código universal",
-      items: [{ text: "Rastrear UPC", run: runUpcTrack }],
+      items: [{ text: "Rastrear GTIN", run: runGtinTrack }],
     },
   ];
 

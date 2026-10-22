@@ -61,26 +61,34 @@
   // Igual que dedupeByLabel en copiar.src.js — se mantiene acá aparte
   // (en vez de compartir un solo archivo) porque cada bookmarklet se
   // instala como un bookmark independiente y tiene que poder correr solo.
-  // Atributos "padre" (identifican al producto): si el valor pasa de
-  // PARENT_ATTR_MAX_LENGTH caracteres, el picker avisa en rojo.
-  const PARENT_ATTR_LABELS = ["marca", "linea", "modelo", "modelo alfanumerico"];
+  // Largo máximo por atributo. Los "padre" (identifican al producto) tienen
+  // un tope más corto; Título y Descripción no tienen tope; el resto usa
+  // el tope general. Pasarse solo avisa en rojo, no bloquea el copiado.
+  const PARENT_ATTR_LABELS = ["fabricante", "marca", "linea", "modelo", "modelo alfanumerico"];
   const PARENT_ATTR_MAX_LENGTH = 30;
+  const GENERAL_ATTR_MAX_LENGTH = 75;
+  const NO_LENGTH_LIMIT_LABELS = ["titulo", "descripcion"];
 
-  function isParentAttrLabel(label) {
-    const key = String(label || "")
+  function normalizeAttrLabel(label) {
+    return String(label || "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .trim()
       .toLowerCase()
       .replace(/\s+/g, " ");
-    return PARENT_ATTR_LABELS.includes(key);
+  }
+
+  function maxLengthForLabel(label) {
+    const key = normalizeAttrLabel(label);
+    if (NO_LENGTH_LIMIT_LABELS.includes(key)) return Infinity;
+    return PARENT_ATTR_LABELS.includes(key) ? PARENT_ATTR_MAX_LENGTH : GENERAL_ATTR_MAX_LENGTH;
   }
 
   function parentLengthWarning(label, value) {
-    if (!isParentAttrLabel(label)) return "";
+    const max = maxLengthForLabel(label);
     const len = String(value || "").trim().length;
-    return len > PARENT_ATTR_MAX_LENGTH
-      ? `⚠ Supera los ${PARENT_ATTR_MAX_LENGTH} caracteres (${len}) — acortalo antes de pegar.`
+    return len > max
+      ? `⚠ Supera los ${max} caracteres (${len}) — acortalo antes de pegar.`
       : "";
   }
 
