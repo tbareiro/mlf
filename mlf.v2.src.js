@@ -21,6 +21,7 @@
   document.getElementById("mlf-bk-overlay")?.remove();
   document.getElementById("mlf-bk-fotos-overlay")?.remove();
   document.getElementById("mlf-bk-toast")?.remove();
+  document.getElementById("mlf-bk-summary")?.remove();
 
   // ============================================================
   // Helpers compartidos del lado "pegar" — idénticos a
@@ -92,6 +93,10 @@
 
   function isColorLabel(label) {
     return /\bcolor\b/i.test(normalize(label));
+  }
+
+  function needsExactOption(attr) {
+    return !!attr.exactOption || isColorLabel(attr.label);
   }
 
   function isMultiSelectOption(li) {
@@ -209,9 +214,9 @@
     return r.width > 0 && r.height > 0;
   }
 
-  async function expandCollapsedSections() {
+  async function expandCollapsedSections(root = document) {
     for (let pass = 0; pass < 3; pass++) {
-      const collapsed = Array.from(document.querySelectorAll('[aria-expanded="false"][role="button"]'));
+      const collapsed = Array.from(root.querySelectorAll('[aria-expanded="false"][role="button"]'));
       if (!collapsed.length) return;
       collapsed.forEach((el) => el.click());
       await new Promise((r) => setTimeout(r, 200));
@@ -252,7 +257,7 @@
 
   async function fillByName(fieldEl, attr) {
     if (fieldEl.tagName === "SELECT") {
-      const r = fillSelect(fieldEl, attr.value, isColorLabel(attr.label));
+      const r = fillSelect(fieldEl, attr.value, needsExactOption(attr));
       return r.ok ? (r.exact ? "select" : "select-approx") : "sin-match";
     }
     const splitField = findSplitUnitFieldFromInput(fieldEl);
@@ -413,7 +418,7 @@
   async function fillByContainer(container, attr) {
     const select = container.querySelector("select");
     if (select) {
-      const r = fillSelect(select, attr.value, isColorLabel(attr.label));
+      const r = fillSelect(select, attr.value, needsExactOption(attr));
       return r.ok ? (r.exact ? "select" : "select-approx") : "sin-match";
     }
 
@@ -450,7 +455,7 @@
     for (let wait = 0; wait < 4 && !document.querySelector('li[role="option"], li[data-key]'); wait++) {
       await new Promise((r) => setTimeout(r, 150));
     }
-    const r = await clickAndesOption(attr.value, isColorLabel(attr.label));
+    const r = await clickAndesOption(attr.value, needsExactOption(attr));
     if (trigger.getAttribute("aria-expanded") === "true") {
       document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       document.body.click();
@@ -678,8 +683,8 @@
    * pasteAttributes, para poder combinar los dos resúmenes en un solo
    * toast cuando se pegan juntos.
    */
-  async function pasteImages(urls) {
-    const input = findPhotoInput();
+  async function pasteImages(urls, root = document) {
+    const input = findPhotoInput(root);
     if (!input) {
       return {
         parts: ["fotos: sin campo visible"],
@@ -1114,8 +1119,8 @@
   // Fotos — lado "pegar"
   // ============================================================
 
-  function findPhotoInput() {
-    const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+  function findPhotoInput(root = document) {
+    const inputs = Array.from(root.querySelectorAll('input[type="file"]'));
     return inputs.find((el) => isVisible(el) && !el.disabled) || null;
   }
 
@@ -1212,7 +1217,9 @@
       : "";
   }
 
-  function showAttributePicker({ headerText, attributes, notice, emptyText, copyButtonText, pasteHintLabel }) {
+  function showAttributePicker({
+    headerText, attributes, images = [], kind, notice, emptyText, copyButtonText, pasteHintLabel,
+  }) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
 
@@ -1236,7 +1243,7 @@
       overlay.appendChild(noticeEl);
     }
 
-    if (!attributes.length) {
+    if (!attributes.length && !images.length) {
       const msg = document.createElement("div");
       msg.style.cssText = "padding:16px 14px;color:#374151;line-height:1.5";
       msg.textContent = emptyText;
@@ -1308,10 +1315,50 @@
         text.appendChild(warn);
       }
 
+      // Línea informativa opcional (hoy solo la usa Fallas para mostrar el
+      // valor original). Comp, MO y Variante no la pasan y no cambian.
+      if (attr.hint) {
+        const hintEl = document.createElement("div");
+        hintEl.style.cssText = "margin-top:3px;font-size:11px;color:#6b7280";
+        hintEl.textContent = attr.hint;
+        text.appendChild(hintEl);
+      }
+
       row.appendChild(cb);
       row.appendChild(text);
       list.appendChild(row);
     });
+
+    // Fotos opcionales, abajo de los atributos. Hoy solo las pasa Fallas.
+    const imageCheckboxes = [];
+    if (images.length) {
+      const imagesHeading = document.createElement("div");
+      imagesHeading.style.cssText =
+        "padding:10px 4px 4px;font-weight:600;font-size:12px;color:#1f2328;border-top:1px solid #f1f2f4;margin-top:4px";
+      imagesHeading.textContent = "Fotos (" + images.length + ")";
+      list.appendChild(imagesHeading);
+
+      const imagesGrid = document.createElement("div");
+      imagesGrid.style.cssText = "display:flex;flex-wrap:wrap;gap:8px;padding:6px 4px";
+      images.forEach((image, idx) => {
+        const cell = document.createElement("label");
+        cell.style.cssText =
+          "position:relative;width:64px;height:64px;border-radius:6px;overflow:hidden;cursor:pointer;display:block";
+        const img = document.createElement("img");
+        img.src = image.thumb;
+        img.style.cssText = "width:100%;height:100%;object-fit:cover;display:block";
+        cell.appendChild(img);
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = true;
+        cb.dataset.idx = String(idx);
+        cb.style.cssText = "position:absolute;top:3px;left:3px;cursor:pointer";
+        imageCheckboxes.push(cb);
+        cell.appendChild(cb);
+        imagesGrid.appendChild(cell);
+      });
+      list.appendChild(imagesGrid);
+    }
 
     const footer = document.createElement("div");
     footer.style.cssText = "padding:8px 12px 12px;border-top:1px solid #e5e7eb";
@@ -1331,17 +1378,27 @@
           const idx = Number(cb.dataset.idx);
           return { ...attributes[idx], value: valueEls[idx].textContent.trim() };
         })
-        .filter((attr) => attr.value.length > 0);
-      if (!selected.length) {
-        status.textContent = "Seleccioná al menos un atributo.";
+        .filter((attr) => attr.value.length > 0 || attr.action === "Eliminado");
+      const selectedImages = imageCheckboxes
+        .filter((cb) => cb.checked)
+        .map((cb) => images[Number(cb.dataset.idx)].url);
+      if (!selected.length && !selectedImages.length) {
+        status.textContent = images.length ? "Seleccioná al menos un atributo o una foto." : "Seleccioná al menos un atributo.";
         return;
       }
       const payload = JSON.stringify({
         v: 1,
+        kind,
         source: location.href,
-        attributes: selected.map(({ id, label, value, multiValue, scope }) => ({ id, label, value, multiValue, scope })),
+        images: selectedImages.length ? selectedImages : undefined,
+        attributes: selected.map(({ id, label, value, multiValue, scope, action, original }) => ({
+          id, label, value, multiValue, scope, action, original,
+        })),
       });
-      const countLabel = `${selected.length} atributo(s)`;
+      const countLabel = [
+        selected.length || !selectedImages.length ? `${selected.length} atributo(s)` : null,
+        selectedImages.length ? `${selectedImages.length} foto(s)` : null,
+      ].filter(Boolean).join(" + ");
       try {
         await navigator.clipboard.writeText(payload);
         status.textContent = `Copiado (${countLabel}). Andá a la herramienta interna y usá "MLF V2 → ${pasteHintLabel}".`;
@@ -1686,6 +1743,480 @@
   }
 
   // ============================================================
+  // Acciones — Fallas (sugerencias "Sin impacto automático")
+  // ============================================================
+
+  function cleanText(el) {
+    return (el?.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  // Cada campo muestra su nivel y su código ("CHILD_PK - LENGTH"), tanto en
+  // la sugerencia como en BC. El código es lo único que no cambia por sitio.
+  function fieldCode(field) {
+    return (cleanText(field.querySelector(".cp-form-field__hierarchy")).match(/([A-Z0-9_]+)$/) || [])[1] || "";
+  }
+
+  // Valor sugerido, según cómo lo muestre el control. Además del recuadro,
+  // el control trae leyendas de ayuda y textos ocultos para lectores de
+  // pantalla ("number_unit_control"): no son parte del valor, por eso no
+  // alcanza con leer el textContent.
+  function readReviewValue(field) {
+    const control = field.querySelector(".cp-form-field__control");
+    if (!control) return "";
+    const tags = Array.from(control.querySelectorAll(".andes-tag__label")).map(cleanText).filter(Boolean);
+    if (tags.length) return tags.join(", ");
+    const number = cleanText(control.querySelector(".cp-custom-number-unit-field__number"));
+    if (number) {
+      return [number, cleanText(control.querySelector(".cp-custom-number-unit-field__unit"))].filter(Boolean).join(" ");
+    }
+    const readOnlyText = cleanText(control.querySelector(".cp-custom-text-field"));
+    if (readOnlyText) return readOnlyText;
+    const input = control.querySelector("input,textarea");
+    if (input) {
+      const unit = cleanText(control.querySelector(".andes-dropdown__display-values"));
+      return [input.value.trim(), unit].filter(Boolean).join(" ");
+    }
+    const clone = control.cloneNode(true);
+    clone
+      .querySelectorAll(
+        ".andes-visually-hidden, .andes-helper, .andes-form-control__bottom, .andes-typography--color-secondary"
+      )
+      .forEach((el) => el.remove());
+    const text = cleanText(control.querySelector(".andes-dropdown__display-values")) || cleanText(clone);
+    return /^selec+ionar/i.test(text) ? "" : text;
+  }
+
+  // Solo interesan las correcciones aprobadas que el sistema avisa que no
+  // se aplican solas. Las rechazadas no traen el aviso y quedan afuera. El
+  // bloque de fotos usa el mismo contenedor pero no tiene botones de
+  // aprobar: se trata aparte.
+  function extractManualImpactCorrections() {
+    const attributes = [];
+    const notes = [];
+    const unreadable = [];
+    document.querySelectorAll(".review-input-decorator__wrapper").forEach((card) => {
+      if (!card.querySelector(".review-input-decorator__manual-impact")) return;
+      if (!card.querySelector(".review-action-buttons__approve--selected")) return;
+
+      const freeText = card.querySelector(".review-additional-suggestions__field textarea");
+      if (freeText) {
+        const note = (freeText.value || freeText.textContent || "").trim();
+        if (note) notes.push(note);
+        return;
+      }
+
+      const field = card.querySelector(".cp-form-field");
+      if (!field) return;
+      const labelEl = field.querySelector(".cp-form-field__label");
+      const label = (labelEl?.getAttribute("title") || cleanText(labelEl)).replace(/\s*\(Obligatorio\)\s*$/i, "");
+      const id = fieldCode(field);
+      const action = cleanText(card.querySelector(".review-input-decorator__correction-meta .andes-badge__content"));
+      const originalEl = card.querySelector(".review-input-decorator__original-value")?.cloneNode(true);
+      originalEl?.querySelector(".review-input-decorator__original-label")?.remove();
+      const original = cleanText(originalEl);
+      const value = action === "Eliminado" ? "" : readReviewValue(field);
+
+      // Sí/No todavía no tiene una captura que muestre cómo se marca el
+      // valor elegido: mejor avisar que pegar algo inventado.
+      if (!id || field.classList.contains("cp-form-field--boolean") || (!value && action !== "Eliminado")) {
+        unreadable.push(label || "Campo sin nombre");
+        return;
+      }
+      const hint = action === "Eliminado"
+        ? `Se va a vaciar. Original: ${original || "(vacío)"}`
+        : `${action}. Original: ${original || "(vacío)"}`;
+      attributes.push({ id, label, value, action, original, hint });
+    });
+    return { attributes, notes, unreadable };
+  }
+
+  // Las miniaturas vienen en 160px (-T). Con -F el CDN entrega la foto
+  // completa, igual que hace upscaleImageUrl con las -O.
+  function fullSizeReviewImage(url) {
+    return url.replace(/-T(\.[a-zA-Z0-9]+)(\?[^#]*)?$/, "-F$1$2");
+  }
+
+  // Cada aviso "Foto N: Aprobado" tiene al lado el de "Sin impacto
+  // automático" si esa foto no se aplicó sola. Se copian solo las agregadas:
+  // las reordenadas ya están en el producto y se repetirían. La misma foto
+  // puede venir dos veces en la sugerencia, por eso se filtra por URL.
+  function extractManualImpactPhotos() {
+    const manualPhotos = new Set();
+    let needsReorder = false;
+    document.querySelectorAll(".andes-card--tertiary").forEach((card) => {
+      if (!card.nextElementSibling?.matches(".review-input-decorator__manual-impact")) return;
+      const text = cleanText(card.querySelector(".andes-badge__content"));
+      if (/^Reorden de imagen: Aprobado/i.test(text)) needsReorder = true;
+      const match = text.match(/^(Foto \d+): Aprobado/i);
+      if (match) manualPhotos.add(match[1]);
+    });
+
+    const images = [];
+    const seen = new Set();
+    let hasNewCover = false;
+    document.querySelectorAll("button.review-picture-item--approved").forEach((item) => {
+      if (!manualPhotos.has(item.getAttribute("aria-label"))) return;
+      if (!item.querySelector(".review-picture-item__action-pill--add")) return;
+      const thumb = item.querySelector(".review-picture-item__thumbnail")?.src;
+      if (!thumb) return;
+      if (item.querySelector(".review-picture-item__portada-clip")) hasNewCover = true;
+      const url = fullSizeReviewImage(thumb);
+      if (seen.has(url)) return;
+      seen.add(url);
+      images.push({ url, thumb });
+    });
+    return { images, needsReorder, hasNewCover };
+  }
+
+  function runFallasCopy() {
+    if (!document.querySelector(".review-form-content")) {
+      showToast('No encontré la sugerencia: usá "Copiar Fallas" parado en la herramienta de sugerencias.');
+      return;
+    }
+    const { attributes, notes, unreadable } = extractManualImpactCorrections();
+    const { images, needsReorder, hasNewCover } = extractManualImpactPhotos();
+    const notices = [];
+    if (needsReorder) notices.push("Reordenar a mano: seguí el orden de la grilla de fotos de la sugerencia");
+    if (hasNewCover) notices.push("Una foto nueva va de portada: revisá que quede primera en BC");
+    if (notes.length) notices.push(`Leer, no se pega: ${notes.join(" / ")}`);
+    if (unreadable.length) notices.push(`Revisar a mano: ${unreadable.join(", ")}`);
+    showAttributePicker({
+      headerText: "MLF — Fallas (" + (attributes.length + images.length) + ")",
+      attributes,
+      images,
+      kind: "fallas",
+      notice: notices.join(" · ") || null,
+      emptyText: "No hay atributos ni fotos para copiar en esta sugerencia.",
+      copyButtonText: "Copiar seleccionados",
+      pasteHintLabel: "Pegar Fallas",
+    });
+  }
+
+  // Las variantes de BC son `div#child-N`. La que importa es la que el
+  // colaborador dejó abierta: elegirla queda de su lado, no se adivina.
+  function openVariantCards() {
+    return Array.from(document.querySelectorAll("[id^='child-']"))
+      .filter((el) => /^child-\d+$/.test(el.id))
+      .filter((el) => {
+        const toggle = el.querySelector(".expandible-card__header [aria-expanded]") || el.querySelector("[aria-expanded]");
+        return toggle?.getAttribute("aria-expanded") === "true";
+      });
+  }
+
+  // Búsqueda exacta: por código y, para los campos que no son
+  // `.cp-form-field` (Título, por ejemplo), por name. Sin parecidos por
+  // nombre: acá el producto ya tiene datos y un match dudoso pisaría uno bueno.
+  function findBcField(root, id) {
+    if (!root) return null;
+    return (
+      Array.from(root.querySelectorAll(".cp-form-field")).find((field) => fieldCode(field) === id) ||
+      root.querySelector(`[name="${id}"], [name^="${id}["], [name*=".${id}["], [name$=".${id}"]`)
+    );
+  }
+
+  function isMultiValueTarget(target) {
+    return !!target.closest(".cp-form-field--multivalued, .cp-custom-multivalue-field");
+  }
+
+  // Solo vacía campos de texto o número. En desplegables y Sí/No no sabemos
+  // si BC acepta dejarlos sin opción: esos quedan para hacerlos a mano. En
+  // número + unidad se borra solo el número; la unidad queda como estaba.
+  function clearBcField(target) {
+    const input = target.matches("input,textarea")
+      ? target
+      : target.matches(".cp-form-field--string, .cp-form-field--numeric, .cp-form-field--number_unit")
+        ? target.querySelector('input:not([role="combobox"]), textarea:not([role="combobox"])')
+        : null;
+    if (!input || input.readOnly || input.disabled || !isVisible(input)) return false;
+    setNativeValue(input, "");
+    return input.value === "";
+  }
+
+  // Valor que BC muestra hoy en un campo. Se lee de la pantalla, no de lo
+  // que se intentó escribir: así el resumen dice lo que realmente quedó.
+  function readBcValue(field) {
+    const tags = Array.from(field.querySelectorAll(".andes-tag__label")).map(cleanText).filter(Boolean);
+    if (tags.length) return tags.join(", ");
+    const booleanControl = field.querySelector(".cp-boolean-control");
+    if (booleanControl) return cleanText(booleanControl.querySelector("button:not(.andes-button--mute)"));
+    const display = cleanText(field.querySelector(".andes-dropdown__display-values"));
+    if (field.matches(".cp-form-field--string, .cp-form-field--numeric, .cp-form-field--number_unit")) {
+      const number = field.querySelector('input:not([role="combobox"]), textarea')?.value.trim();
+      return number ? [number, display].filter(Boolean).join(" ") : "";
+    }
+    return /^selec+ionar/i.test(display) ? "" : display;
+  }
+
+  // Foto de todos los campos de las zonas que se van a tocar. Comparar la de
+  // antes con la de después detecta si BC cambió algo que nadie pidió.
+  function snapshotBc(...roots) {
+    const values = new Map();
+    roots.filter(Boolean).forEach((root) => {
+      root.querySelectorAll(".cp-form-field").forEach((field) => {
+        const id = fieldCode(field);
+        if (!id) return;
+        const labelEl = field.querySelector(".cp-form-field__label");
+        const label = (labelEl?.getAttribute("title") || cleanText(labelEl)).replace(/\s*\(Obligatorio\)\s*$/i, "");
+        values.set(id, { label, value: readBcValue(field) });
+      });
+      root.querySelectorAll("input[name],textarea[name]").forEach((el) => {
+        const id = (el.name.match(/([A-Z0-9_]+)(\[\d+\])?$/) || [])[1];
+        if (id && !el.closest(".cp-form-field")) values.set(id, { label: id, value: el.value.trim() });
+      });
+      root.querySelectorAll(".cp-custom-multivalue-field").forEach((el) => {
+        if (el.closest(".cp-form-field")) return;
+        const tags = Array.from(el.querySelectorAll(".andes-tag__label")).map(cleanText);
+        const label = el.getAttribute("aria-label") || "Varios valores";
+        values.set(label, { label, value: tags.join(", ") });
+      });
+      root.querySelectorAll('[contenteditable="true"]').forEach((el) => {
+        values.set("Descripción", { label: "Descripción", value: cleanText(el) });
+      });
+    });
+    return values;
+  }
+
+  function sameValue(a, b) {
+    const comparable = (text) => normalize(text).replace(/,/g, ".").replace(/\s+/g, "");
+    return comparable(a) === comparable(b);
+  }
+
+  const FALLAS_NOT_WRITTEN = {
+    "sin-match": "No se encontró en BC",
+    "no-en-lista": "BC no tiene ese valor en la lista o no dejó escribirlo: cargar a mano",
+    manual: "Varios valores: cargar a mano",
+    pendiente: "Vaciar a mano",
+    protegido: "Campo protegido",
+  };
+
+  async function pasteFallas(attributes, images) {
+    const parent = document.getElementById("parent");
+    if (!parent) {
+      return { blocked: 'No encontré el formulario: usá "Pegar Fallas" parado en BC.' };
+    }
+    await expandCollapsedSections(parent);
+
+    // Se revisa antes de escribir para no dejar un pegado por la mitad.
+    const needsVariant = images.length > 0 || attributes.some((attr) => !findBcField(parent, attr.id));
+    const variants = openVariantCards();
+    if (needsVariant && variants.length !== 1) {
+      return {
+        blocked: variants.length
+          ? "Hay más de una variante abierta: dejá abierta solo la que corresponde y volvé a pegar."
+          : "Abrí la variante que corresponde y volvé a pegar. No se pegó nada.",
+      };
+    }
+    if (needsVariant) await expandCollapsedSections(variants[0]);
+
+    const variant = variants.length === 1 ? variants[0] : null;
+    const before = snapshotBc(parent, variant);
+    const protectedTargets = protectedTargetsFor(document, PROTECTED_LABELS);
+    const outcomes = new Map();
+
+    // El campo se busca recién al escribirlo: BC puede volver a dibujar el
+    // formulario después de cada cambio y dejar vieja una referencia anterior.
+    async function fillAttr(attr) {
+      const target = findBcField(parent, attr.id) || findBcField(openVariantCards()[0], attr.id);
+      if (!target) return "sin-match";
+      if (isProtected(target, protectedTargets)) return "protegido";
+      if (isMultiValueTarget(target)) return "manual";
+      const current = target.matches(".cp-form-field") ? readBcValue(target) : target.value.trim();
+      if (sameValue(current, attr.action === "Eliminado" ? "" : attr.value)) return "ya-estaba";
+      if (attr.action === "Eliminado") return clearBcField(target) ? "vaciado" : "pendiente";
+      // Sobre un producto real, una opción parecida es un dato equivocado:
+      // sin coincidencia exacta se avisa en vez de elegir la más cercana.
+      const exactAttr = { ...attr, exactOption: true };
+      const outcome = target.matches(".cp-form-field")
+        ? await fillByContainer(target, exactAttr)
+        : await fillByName(target, exactAttr);
+      return outcome === "sin-match" ? "no-en-lista" : outcome;
+    }
+
+    async function fillList(attrs) {
+      const failed = [];
+      for (const attr of attrs) {
+        const outcome = await fillAttr(attr);
+        outcomes.set(attr, outcome);
+        if (outcome === "sin-match" || outcome === "no-en-lista") failed.push(attr);
+      }
+      if (!failed.length) return;
+      await new Promise((r) => setTimeout(r, 800));
+      for (const attr of failed) outcomes.set(attr, await fillAttr(attr));
+    }
+
+    // Primero lo general: completarlo puede resetear la sección de variante.
+    const generalAttrs = attributes.filter((attr) => findBcField(parent, attr.id));
+    const variantAttrs = attributes.filter((attr) => !findBcField(parent, attr.id));
+    await fillList(generalAttrs);
+    if (variantAttrs.length) {
+      await new Promise((r) => setTimeout(r, 400));
+      await fillList(variantAttrs);
+    }
+
+    // Las fotos son de la variante. Se vuelve a pedir la tarjeta porque si
+    // BC la cerró, pasteImages buscaría en toda la página.
+    const photoLines = [];
+    const photoWarnings = [];
+    if (images.length) {
+      const openVariant = openVariantCards()[0];
+      if (!openVariant) {
+        photoWarnings.push("Fotos: la variante se cerró, abrila y pegá de nuevo.");
+      } else {
+        const imageResult = await pasteImages(images, openVariant);
+        photoLines.push(...imageResult.parts);
+        photoWarnings.push(...imageResult.detailLines);
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 300));
+    const after = snapshotBc(parent, variant ? openVariantCards()[0] : null);
+
+    const rows = attributes.map((attr) => {
+      const outcome = outcomes.get(attr);
+      const oldValue = before.get(attr.id)?.value ?? "";
+      const newValue = after.get(attr.id)?.value ?? "";
+      const expected = attr.action === "Eliminado" ? "" : attr.value;
+      let warning = FALLAS_NOT_WRITTEN[outcome] || "";
+      const alreadySet = outcome === "ya-estaba";
+      if (!warning && !sameValue(newValue, expected)) warning = `Quedó distinto a lo pedido: ${expected || "(vacío)"}`;
+      else if (!warning && outcome === "dropdown-added") warning = "Se agregó como opción nueva: revisá que esté bien escrito";
+      else if (!warning && !alreadySet && attr.original && !sameValue(oldValue, attr.original)) {
+        warning = `La sugerencia decía original ${attr.original}`;
+      }
+      return { label: attr.label, oldValue, newValue, warning, alreadySet, changed: !sameValue(oldValue, newValue) };
+    });
+
+    const pastedIds = new Set(attributes.map((attr) => attr.id));
+    const others = [];
+    new Set([...before.keys(), ...after.keys()]).forEach((id) => {
+      if (pastedIds.has(id)) return;
+      const oldField = before.get(id);
+      const newField = after.get(id);
+      if (sameValue(oldField?.value ?? "", newField?.value ?? "") && oldField && newField) return;
+      others.push({
+        label: (oldField || newField).label,
+        oldValue: oldField?.value ?? "",
+        newValue: newField ? newField.value : "(ya no aparece)",
+      });
+    });
+    return { rows, others, photoLines, photoWarnings };
+  }
+
+  // Reemplaza al toast en Fallas. Si todo salió bien queda en una línea para
+  // no molestar, y se abre solo cuando hay algo para revisar.
+  function showFallasSummary({ rows, others, photoLines, photoWarnings }) {
+    const changed = rows.filter((row) => row.changed).length;
+    const alreadySet = rows.filter((row) => row.alreadySet).length;
+    const toReview = rows.filter((row) => row.warning).length + others.length + photoWarnings.length;
+
+    const box = document.createElement("div");
+    box.id = "mlf-bk-summary";
+    box.style.cssText = [
+      "position:fixed", "right:16px", "bottom:16px", "width:400px", "max-height:70vh",
+      "background:#fff", "color:#1f2328", "border-radius:10px", "z-index:2147483647",
+      "box-shadow:0 4px 24px rgba(0,0,0,.3)", "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
+      "display:flex", "flex-direction:column", "overflow:hidden",
+    ].join(";");
+
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;gap:8px;padding:9px 12px;font-weight:600";
+    const title = document.createElement("div");
+    title.style.cssText = "flex:1";
+    title.textContent = [
+      `✓ ${changed} cambiado(s)`,
+      alreadySet ? `${alreadySet} ya estaba(n) bien` : null,
+      ...photoLines,
+      toReview ? `⚠ ${toReview} para revisar` : null,
+    ].filter(Boolean).join(" · ");
+    const toggle = document.createElement("button");
+    toggle.style.cssText = "border:none;background:none;cursor:pointer;font-size:13px;color:#6b7280";
+    const close = document.createElement("button");
+    close.textContent = "✕";
+    close.style.cssText = toggle.style.cssText;
+    close.onclick = () => box.remove();
+    header.append(title, toggle, close);
+
+    const detail = document.createElement("div");
+    detail.style.cssText = "overflow-y:auto;padding:0 12px 10px;border-top:1px solid #e5e7eb";
+
+    const addLine = (parent, text, style) => {
+      const line = document.createElement("div");
+      line.style.cssText = style;
+      line.textContent = text;
+      parent.appendChild(line);
+    };
+    const showValue = (value) => value || "(vacío)";
+    const WARNING_STYLE = "margin-top:2px;font-size:11px;color:#8a5a00";
+
+    rows.forEach((row) => {
+      const item = document.createElement("div");
+      item.style.cssText = "padding:7px 0;border-bottom:1px solid #f1f2f4";
+      addLine(item, row.label, "font-weight:600");
+      addLine(
+        item,
+        row.changed
+          ? `${showValue(row.oldValue)} → ${showValue(row.newValue)}`
+          : `${showValue(row.newValue)} (${row.alreadySet ? "BC ya tenía este valor" : "sin cambios"})`,
+        "color:#374151;word-break:break-word"
+      );
+      if (row.warning) addLine(item, "⚠ " + row.warning, WARNING_STYLE);
+      detail.appendChild(item);
+    });
+
+    photoWarnings.forEach((line) => addLine(detail, "⚠ " + line, "padding-top:6px;font-size:11px;color:#8a5a00"));
+
+    if (others.length) {
+      addLine(detail, "⚠ Otros campos que cambiaron:", "padding-top:8px;font-weight:600;color:#b42318");
+      others.forEach((other) => {
+        addLine(
+          detail,
+          `${other.label}: ${showValue(other.oldValue)} → ${showValue(other.newValue)}`,
+          "font-size:12px;color:#b42318;word-break:break-word"
+        );
+      });
+    } else {
+      addLine(detail, "Otros campos que cambiaron: ninguno", "padding-top:8px;font-size:12px;color:#6b7280");
+    }
+
+    const setOpen = (open) => {
+      detail.style.display = open ? "block" : "none";
+      toggle.textContent = open ? "▾" : "▴";
+    };
+    toggle.onclick = () => setOpen(detail.style.display === "none");
+    setOpen(toReview > 0);
+
+    box.append(header, detail);
+    document.getElementById("mlf-bk-summary")?.remove();
+    document.body.appendChild(box);
+  }
+
+  async function runFallasPaste() {
+    const raw = await getClipboardText("Copiar Fallas");
+    if (!raw) {
+      showToast("Cancelado: no hay datos para pegar.");
+      return;
+    }
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch (err) {
+      showToast('El texto pegado no es válido (¿copiaste bien con "Copiar Fallas"?).');
+      return;
+    }
+    // Pegar un JSON de Comp, MO o Fotos acá escribiría datos que nadie
+    // marcó para corregir.
+    const attributes = (payload?.attributes || []).filter((attr) => attr.id);
+    const images = payload?.images || [];
+    if (payload?.kind !== "fallas" || (!attributes.length && !images.length)) {
+      showToast('No hay datos de "Copiar Fallas" para pegar.');
+      return;
+    }
+    const result = await pasteFallas(attributes, images);
+    if (result.blocked) showToast(result.blocked);
+    else showFallasSummary(result);
+  }
+
+  // ============================================================
   // Rastrear GTIN (código universal)
   // ============================================================
 
@@ -1903,6 +2434,13 @@
       items: [
         { text: "Copiar Fotos", run: runFotosCopy },
         { text: "Pegar Fotos", run: runFotosPaste },
+      ],
+    },
+    {
+      label: "Fallas",
+      items: [
+        { text: "Copiar Fallas", run: runFallasCopy },
+        { text: "Pegar Fallas", run: runFallasPaste },
       ],
     },
     {
