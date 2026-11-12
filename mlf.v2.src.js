@@ -597,7 +597,7 @@
    *
    * Devuelve { parts, detailLines } en vez de mostrar el toast directo —
    * así quien llama puede combinarlo con el resultado de pegar fotos en
-   * un solo resumen (ver pasteImages / runComparatorPaste).
+   * un solo resumen (ver pasteImages / pasteWholeForm).
    */
   async function pasteAttributes(attributes, { scopeRoot, expand }) {
     if (expand) await expandCollapsedSections();
@@ -1218,7 +1218,7 @@
   }
 
   function showAttributePicker({
-    headerText, attributes, images = [], kind, notice, emptyText, copyButtonText, pasteHintLabel,
+    headerText, attributes, images = [], kind, notice, emptyText, copyButtonText,
   }) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
@@ -1389,6 +1389,7 @@
       const payload = JSON.stringify({
         v: 1,
         kind,
+        ts: Date.now(),
         source: location.href,
         images: selectedImages.length ? selectedImages : undefined,
         attributes: selected.map(({ id, label, value, multiValue, scope, action, original }) => ({
@@ -1401,7 +1402,7 @@
       ].filter(Boolean).join(" + ");
       try {
         await navigator.clipboard.writeText(payload);
-        status.textContent = `Copiado (${countLabel}). Andá a la herramienta interna y usá "MLF V2 → ${pasteHintLabel}".`;
+        status.textContent = `Copiado (${countLabel}). Andá a la herramienta interna y usá "MLF V2 → Pegar".`;
       } catch (err) {
         const ta = document.createElement("textarea");
         ta.value = payload;
@@ -1411,7 +1412,7 @@
         const ok = document.execCommand("copy");
         ta.remove();
         status.textContent = ok
-          ? `Copiado (${countLabel}). Usá "MLF V2 → ${pasteHintLabel}".`
+          ? `Copiado (${countLabel}). Usá "MLF V2 → Pegar".`
           : "No se pudo copiar. Probá seleccionar manualmente.";
       }
     };
@@ -1464,29 +1465,13 @@
       notice,
       emptyText: "No se encontraron atributos en esta página.",
       copyButtonText: "Copiar seleccionados",
-      pasteHintLabel: "Comparator",
+      kind: "comp",
     });
   }
 
-  function runComparatorPaste() {
-    return pasteFromClipboard("Comparator");
-  }
-
   // Pegado "a toda la ficha" (sin acordeón de a una tarjeta) — lo comparten
-  // Comparator y MO, solo cambia el nombre del botón en los mensajes.
-  async function pasteFromClipboard(copiedWithLabel) {
-    const raw = await getClipboardText(copiedWithLabel);
-    if (!raw) {
-      showToast("Cancelado: no hay datos para pegar.");
-      return;
-    }
-    let payload;
-    try {
-      payload = JSON.parse(raw);
-    } catch (err) {
-      showToast(`El texto pegado no es válido (¿copiaste bien con "${copiedWithLabel}"?).`);
-      return;
-    }
+  // Comp y MO (y los datos sin tipo de versiones viejas).
+  async function pasteWholeForm(payload) {
     const attributes = (payload && payload.attributes) || [];
     const images = (payload && payload.images) || [];
     if (!attributes.length && !images.length) {
@@ -1544,12 +1529,8 @@
       notice: null,
       emptyText: "No se encontraron atributos en esta sugerencia.",
       copyButtonText: "Copiar seleccionados",
-      pasteHintLabel: "Pegar MO",
+      kind: "mo",
     });
-  }
-
-  function runMOPaste() {
-    return pasteFromClipboard("Copiar MO");
   }
 
   // ============================================================
@@ -1584,23 +1565,11 @@
       attributes,
       emptyText: "",
       copyButtonText: "Copiar variante",
-      pasteHintLabel: "Variante",
+      kind: "variante",
     });
   }
 
-  async function runVariantePaste() {
-    const raw = await getClipboardText("Variante");
-    if (!raw) {
-      showToast("Cancelado: no hay datos para pegar.");
-      return;
-    }
-    let payload;
-    try {
-      payload = JSON.parse(raw);
-    } catch (err) {
-      showToast('El texto pegado no es válido (¿copiaste bien con "Variante"?).');
-      return;
-    }
+  async function pasteVariante(payload) {
     const attributes = (payload && payload.attributes) || [];
     const images = (payload && payload.images) || [];
     if (!attributes.length && !images.length) {
@@ -1692,10 +1661,10 @@
         status.textContent = "Seleccioná al menos una foto.";
         return;
       }
-      const payload = JSON.stringify({ v: 1, source: location.href, images: selected });
+      const payload = JSON.stringify({ v: 1, kind: "fotos", ts: Date.now(), source: location.href, images: selected });
       try {
         await navigator.clipboard.writeText(payload);
-        status.textContent = `Copiadas (${selected.length}). Andá a la herramienta interna y usá "MLF V2 → Fotos".`;
+        status.textContent = `Copiadas (${selected.length}). Andá a la herramienta interna y usá "MLF V2 → Pegar".`;
       } catch (err) {
         const ta = document.createElement("textarea");
         ta.value = payload;
@@ -1705,7 +1674,7 @@
         const ok = document.execCommand("copy");
         ta.remove();
         status.textContent = ok
-          ? `Copiadas (${selected.length}). Usá "MLF V2 → Fotos".`
+          ? `Copiadas (${selected.length}). Usá "MLF V2 → Pegar".`
           : "No se pudo copiar. Probá seleccionar manualmente.";
       }
     };
@@ -1719,19 +1688,7 @@
     document.body.appendChild(overlay);
   }
 
-  async function runFotosPaste() {
-    const raw = await getClipboardText("Fotos");
-    if (!raw) {
-      showToast("Cancelado: no hay datos para pegar.");
-      return;
-    }
-    let payload;
-    try {
-      payload = JSON.parse(raw);
-    } catch (err) {
-      showToast('El texto pegado no es válido (¿copiaste bien con "Fotos"?).');
-      return;
-    }
+  async function pasteFotos(payload) {
     const urls = payload && payload.images;
     if (!urls || !urls.length) {
       showToast("No hay fotos en los datos pegados.");
@@ -1888,7 +1845,6 @@
       notice: notices.join(" · ") || null,
       emptyText: "No hay atributos ni fotos para copiar en esta sugerencia.",
       copyButtonText: "Copiar seleccionados",
-      pasteHintLabel: "Pegar Fallas",
     });
   }
 
@@ -2190,24 +2146,10 @@
     document.body.appendChild(box);
   }
 
-  async function runFallasPaste() {
-    const raw = await getClipboardText("Copiar Fallas");
-    if (!raw) {
-      showToast("Cancelado: no hay datos para pegar.");
-      return;
-    }
-    let payload;
-    try {
-      payload = JSON.parse(raw);
-    } catch (err) {
-      showToast('El texto pegado no es válido (¿copiaste bien con "Copiar Fallas"?).');
-      return;
-    }
-    // Pegar un JSON de Comp, MO o Fotos acá escribiría datos que nadie
-    // marcó para corregir.
+  async function pasteFallasPayload(payload) {
     const attributes = (payload?.attributes || []).filter((attr) => attr.id);
     const images = payload?.images || [];
-    if (payload?.kind !== "fallas" || (!attributes.length && !images.length)) {
+    if (!attributes.length && !images.length) {
       showToast('No hay datos de "Copiar Fallas" para pegar.');
       return;
     }
@@ -2395,58 +2337,77 @@
   }
 
   // ============================================================
-  // Menú principal
+  // Pegar unificado + menú principal
   // ============================================================
 
-  /**
-   * Botones explícitos de Copiar/Pegar por grupo (no auto-detección) —
-   * pedido expreso: el menú tiene que mantener el mismo patrón de
-   * botones separados que la barra de favoritos de siempre (ver
-   * index.html), solo que agrupados en un menú en vez de ocupar 6 lugares
-   * en la barra. "Comparator" y "Variante" ya incluyen las fotos de la
-   * galería en su propio picker (ver showAttributePicker) — "Fotos" queda
-   * aparte para cuando hace falta llevar fotos sueltas, sin atributos.
-   */
-  const MENU_GROUPS = [
-    {
-      label: "Comparator",
-      items: [
-        { text: "Copiar Comp", run: runComparatorCopy },
-        { text: "Pegar Comp", run: runComparatorPaste },
-      ],
-    },
-    {
-      label: "MO",
-      items: [
-        { text: "Copiar MO", run: runMOCopy },
-        { text: "Pegar MO", run: runMOPaste },
-      ],
-    },
-    {
-      label: "Variante",
-      items: [
-        { text: "Copiar Variante", run: runVarianteCopy },
-        { text: "Pegar Variante", run: runVariantePaste },
-      ],
-    },
-    {
-      label: "Fotos",
-      items: [
-        { text: "Copiar Fotos", run: runFotosCopy },
-        { text: "Pegar Fotos", run: runFotosPaste },
-      ],
-    },
-    {
-      label: "Fallas",
-      items: [
-        { text: "Copiar Fallas", run: runFallasCopy },
-        { text: "Pegar Fallas", run: runFallasPaste },
-      ],
-    },
-    {
-      label: "Código universal",
-      items: [{ text: "Rastrear GTIN", run: runGtinTrack }],
-    },
+  const KIND_INFO = {
+    comp: { label: "Comp", color: "#3483fa" },
+    mo: { label: "MO", color: "#7c3aed" },
+    variante: { label: "Variante", color: "#0e9f6e" },
+    fotos: { label: "Fotos", color: "#d97706" },
+    fallas: { label: "Fallas", color: "#dc2626" },
+  };
+
+  function parseMlfPayload(raw) {
+    if (!raw || !raw.trim()) return null;
+    try {
+      const payload = JSON.parse(raw);
+      if (!payload || typeof payload !== "object") return null;
+      if (!Array.isArray(payload.attributes) && !Array.isArray(payload.images)) return null;
+      return payload;
+    } catch (err) {
+      return null;
+    }
+  }
+
+  // Datos de versiones viejas no traen `kind`: solo fotos => Fotos, el resto
+  // se pega como Comp (a toda la ficha).
+  function payloadKind(payload) {
+    if (KIND_INFO[payload.kind]) return payload.kind;
+    return !(payload.attributes || []).length && (payload.images || []).length ? "fotos" : "comp";
+  }
+
+  function describePayload(payload) {
+    const kind = payloadKind(payload);
+    const parts = [];
+    const attrCount = (payload.attributes || []).length;
+    const imgCount = (payload.images || []).length;
+    if (attrCount) parts.push(`${attrCount} atributo(s)`);
+    if (imgCount) parts.push(`${imgCount} foto(s)`);
+    let host = "";
+    try { host = new URL(payload.source).hostname.replace(/^www\./, ""); } catch (_) { /* sin source */ }
+    let age = "";
+    if (payload.ts) {
+      const mins = Math.max(0, Math.round((Date.now() - payload.ts) / 60000));
+      age = mins < 1 ? "recién" : mins < 60 ? `hace ${mins} min` : `hace ${Math.round(mins / 60)} h`;
+    }
+    return { kind, info: KIND_INFO[kind], summary: parts.join(" + ") || "vacío", meta: [host, age].filter(Boolean).join(" · ") };
+  }
+
+  async function runPaste() {
+    const raw = await getClipboardText("MLF");
+    if (!raw) {
+      showToast("Cancelado: no hay datos para pegar.");
+      return;
+    }
+    const payload = parseMlfPayload(raw);
+    if (!payload) {
+      showToast("El portapapeles no tiene datos de MLF: copiá primero con alguno de los botones Copiar.");
+      return;
+    }
+    const kind = payloadKind(payload);
+    if (kind === "fotos") return pasteFotos(payload);
+    if (kind === "variante") return pasteVariante(payload);
+    if (kind === "fallas") return pasteFallasPayload(payload);
+    return pasteWholeForm(payload);
+  }
+
+  const COPY_BUTTONS = [
+    { text: "Comp", kind: "comp", run: runComparatorCopy },
+    { text: "MO", kind: "mo", run: runMOCopy },
+    { text: "Variante", kind: "variante", run: runVarianteCopy },
+    { text: "Fotos", kind: "fotos", run: runFotosCopy },
+    { text: "Fallas", kind: "fallas", run: runFallasCopy },
   ];
 
   function buildMenu() {
@@ -2454,15 +2415,15 @@
     menu.id = MENU_ID;
     menu.style.cssText = [
       "position:fixed", "top:16px", "right:16px", "width:300px",
-      "background:#fff", "color:#1f2328", "border-radius:10px",
-      "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
+      "background:#fff", "color:#1f2328", "border-radius:12px",
+      "box-shadow:0 6px 28px rgba(0,0,0,.3)", "z-index:2147483647",
       "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
       "overflow:hidden",
     ].join(";");
 
     const header = document.createElement("div");
     header.style.cssText =
-      "display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb;font-weight:600";
+      "display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:700";
     header.textContent = "MLF V2";
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
@@ -2472,49 +2433,97 @@
     menu.appendChild(header);
 
     const body = document.createElement("div");
-    body.style.cssText = "display:flex;flex-direction:column;gap:14px;padding:12px;";
+    body.style.cssText = "display:flex;flex-direction:column;gap:14px;padding:12px 14px 14px";
 
-    MENU_GROUPS.forEach((group) => {
-      const groupEl = document.createElement("div");
-      groupEl.style.cssText = "display:flex;flex-direction:column;gap:6px";
-
+    const section = (label) => {
+      const el = document.createElement("div");
       const labelEl = document.createElement("div");
       labelEl.style.cssText =
-        "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.06em;" +
-        "text-transform:uppercase;color:#8a8f98";
-      labelEl.textContent = group.label;
-      groupEl.appendChild(labelEl);
+        "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;letter-spacing:.08em;" +
+        "text-transform:uppercase;color:#8a8f98;margin-bottom:6px";
+      labelEl.textContent = label;
+      el.appendChild(labelEl);
+      return el;
+    };
+    const hover = (btn) => {
+      btn.onmouseenter = () => (btn.style.filter = "brightness(.92)");
+      btn.onmouseleave = () => (btn.style.filter = "none");
+    };
 
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;gap:8px";
-      group.items.forEach((item) => {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        // Ancho fijo (no flex: crece/achica según el texto) para que los 6
-        // botones del menú midan exactamente lo mismo, sin importar el
-        // grupo — "Pegar Variante" es el texto más largo, el resto queda
-        // centrado en el mismo ancho.
-        btn.style.cssText = [
-          "width:124px", "flex:0 0 auto", "display:flex", "align-items:center",
-          "justify-content:center", "padding:9px 6px", "border:none", "border-radius:7px",
-          "background:#3483fa", "color:#fff", "font-weight:600", "font-size:12.5px",
-          "cursor:pointer", "white-space:nowrap", "overflow:hidden", "text-overflow:ellipsis",
-        ].join(";");
-        btn.textContent = item.text;
-        btn.onmouseenter = () => (btn.style.filter = "brightness(.92)");
-        btn.onmouseleave = () => (btn.style.filter = "none");
-        btn.onclick = () => {
-          menu.remove();
-          item.run();
-        };
-        row.appendChild(btn);
-      });
-      groupEl.appendChild(row);
-      body.appendChild(groupEl);
+    // Copiar: un botón por origen, cada uno con su color.
+    const copySec = section("Copiar");
+    const grid = document.createElement("div");
+    grid.style.cssText = "display:grid;grid-template-columns:repeat(3,1fr);gap:6px";
+    COPY_BUTTONS.forEach((item) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = item.text;
+      btn.style.cssText =
+        `padding:9px 4px;border:none;border-radius:7px;background:${KIND_INFO[item.kind].color};color:#fff;` +
+        "font-weight:600;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis";
+      hover(btn);
+      btn.onclick = () => { menu.remove(); item.run(); };
+      grid.appendChild(btn);
     });
+    copySec.appendChild(grid);
+    body.appendChild(copySec);
+
+    // Pegar: un solo botón + qué hay en el portapapeles.
+    const pasteSec = section("Pegar");
+    const card = document.createElement("div");
+    card.style.cssText =
+      "display:flex;flex-direction:column;gap:2px;padding:8px 10px;margin-bottom:8px;background:#f6f7f9;" +
+      "border:1px solid #e5e7eb;border-left:4px solid #c4c8cf;border-radius:7px;font-size:12px;line-height:1.35";
+    const cardTitle = document.createElement("div");
+    cardTitle.style.cssText = "font-weight:600";
+    cardTitle.textContent = "Leyendo portapapeles…";
+    const cardSub = document.createElement("div");
+    cardSub.style.cssText = "color:#6b7280";
+    card.append(cardTitle, cardSub);
+    pasteSec.appendChild(card);
+
+    const pasteBtn = document.createElement("button");
+    pasteBtn.type = "button";
+    pasteBtn.textContent = "Pegar";
+    pasteBtn.style.cssText =
+      "width:100%;padding:10px;border:none;border-radius:7px;background:#1f2328;color:#fff;" +
+      "font-weight:700;font-size:13px;cursor:pointer";
+    hover(pasteBtn);
+    pasteBtn.onclick = () => { menu.remove(); runPaste(); };
+    pasteSec.appendChild(pasteBtn);
+    body.appendChild(pasteSec);
+
+    const otherSec = section("Código universal");
+    const gtinBtn = document.createElement("button");
+    gtinBtn.type = "button";
+    gtinBtn.textContent = "Rastrear GTIN";
+    gtinBtn.style.cssText =
+      "width:100%;padding:8px;border:1px solid #d0d5dd;border-radius:7px;background:#fff;color:#1f2328;" +
+      "font-weight:600;font-size:12.5px;cursor:pointer";
+    hover(gtinBtn);
+    gtinBtn.onclick = () => { menu.remove(); runGtinTrack(); };
+    otherSec.appendChild(gtinBtn);
+    body.appendChild(otherSec);
 
     menu.appendChild(body);
     document.body.appendChild(menu);
+
+    // Si el navegador no deja leer el portapapeles sin permiso, no se
+    // insiste: el botón Pegar lo vuelve a pedir (o abre el prompt de Ctrl+V).
+    const showClipboard = (text) => {
+      const payload = parseMlfPayload(text);
+      if (!payload) {
+        cardTitle.textContent = text === null ? "Portapapeles sin leer" : "Sin datos de MLF";
+        cardSub.textContent = text === null ? "Tocá Pegar para leerlo." : "Copiá algo con los botones de arriba.";
+        return;
+      }
+      const d = describePayload(payload);
+      cardTitle.textContent = `${d.info.label} · ${d.summary}`;
+      cardSub.textContent = d.meta || "Listo para pegar";
+      card.style.borderLeftColor = d.info.color;
+      pasteBtn.textContent = `Pegar ${d.info.label}`;
+    };
+    navigator.clipboard.readText().then(showClipboard, () => showClipboard(null));
   }
 
   buildMenu();
