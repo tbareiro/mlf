@@ -1402,7 +1402,7 @@
       ].filter(Boolean).join(" + ");
       try {
         await navigator.clipboard.writeText(payload);
-        status.textContent = `Copiado (${countLabel}). Andá a la herramienta interna y usá "MLF V2 → Pegar".`;
+        status.textContent = `Copiado (${countLabel}). Andá a la herramienta interna y usá "MeLiFast → Pegar".`;
       } catch (err) {
         const ta = document.createElement("textarea");
         ta.value = payload;
@@ -1412,7 +1412,7 @@
         const ok = document.execCommand("copy");
         ta.remove();
         status.textContent = ok
-          ? `Copiado (${countLabel}). Usá "MLF V2 → Pegar".`
+          ? `Copiado (${countLabel}). Usá "MeLiFast → Pegar".`
           : "No se pudo copiar. Probá seleccionar manualmente.";
       }
     };
@@ -1514,7 +1514,7 @@
 
   function runMOCopy() {
     if (!document.querySelector("table.changes-table")) {
-      showToast('No encontré "Atributos propuestos" — usá "Copiar MO" parado en la sugerencia.');
+      showToast('No encontré "Atributos propuestos" — usá "MeliOne" parado en la sugerencia.');
       return;
     }
     const attributes = dedupeByLabel(
@@ -1664,7 +1664,7 @@
       const payload = JSON.stringify({ v: 1, kind: "fotos", ts: Date.now(), source: location.href, images: selected });
       try {
         await navigator.clipboard.writeText(payload);
-        status.textContent = `Copiadas (${selected.length}). Andá a la herramienta interna y usá "MLF V2 → Pegar".`;
+        status.textContent = `Copiadas (${selected.length}). Andá a la herramienta interna y usá "MeLiFast → Pegar".`;
       } catch (err) {
         const ta = document.createElement("textarea");
         ta.value = payload;
@@ -1674,7 +1674,7 @@
         const ok = document.execCommand("copy");
         ta.remove();
         status.textContent = ok
-          ? `Copiadas (${selected.length}). Usá "MLF V2 → Pegar".`
+          ? `Copiadas (${selected.length}). Usá "MeLiFast → Pegar".`
           : "No se pudo copiar. Probá seleccionar manualmente.";
       }
     };
@@ -2341,8 +2341,8 @@
   // ============================================================
 
   const KIND_INFO = {
-    comp: { label: "Comp", color: "#3483fa" },
-    mo: { label: "MO", color: "#7c3aed" },
+    comp: { label: "Comparator", color: "#3483fa" },
+    mo: { label: "MeliOne", color: "#7c3aed" },
     variante: { label: "Variante", color: "#0e9f6e" },
     fotos: { label: "Fotos", color: "#d97706" },
     fallas: { label: "Fallas", color: "#dc2626" },
@@ -2403,11 +2403,11 @@
   }
 
   const COPY_BUTTONS = [
-    { text: "Comp", kind: "comp", run: runComparatorCopy },
-    { text: "MO", kind: "mo", run: runMOCopy },
+    { text: "Comparator", kind: "comp", run: runComparatorCopy },
     { text: "Variante", kind: "variante", run: runVarianteCopy },
     { text: "Fotos", kind: "fotos", run: runFotosCopy },
     { text: "Fallas", kind: "fallas", run: runFallasCopy },
+    { text: "MeliOne", kind: "mo", run: runMOCopy },
   ];
 
   function buildMenu() {
@@ -2424,7 +2424,7 @@
     const header = document.createElement("div");
     header.style.cssText =
       "display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #e5e7eb;font-weight:700";
-    header.textContent = "MLF V2";
+    header.textContent = "MeLiFast";
     const closeBtn = document.createElement("button");
     closeBtn.textContent = "✕";
     closeBtn.style.cssText = "border:none;background:none;cursor:pointer;font-size:14px;color:#6b7280";
@@ -2496,7 +2496,7 @@
     const otherSec = section("Código universal");
     const gtinBtn = document.createElement("button");
     gtinBtn.type = "button";
-    gtinBtn.textContent = "Rastrear GTIN";
+    gtinBtn.textContent = "Rastrear GTIN (SCP)";
     gtinBtn.style.cssText =
       "width:100%;padding:8px;border:1px solid #d0d5dd;border-radius:7px;background:#fff;color:#1f2328;" +
       "font-weight:600;font-size:12.5px;cursor:pointer";
@@ -2521,7 +2521,6 @@
       cardTitle.textContent = `${d.info.label} · ${d.summary}`;
       cardSub.textContent = d.meta || "Listo para pegar";
       card.style.borderLeftColor = d.info.color;
-      pasteBtn.textContent = `Pegar ${d.info.label}`;
     };
     navigator.clipboard.readText().then(showClipboard, () => showClipboard(null));
   }
