@@ -1064,8 +1064,10 @@
   // Fotos — extracción del lado "copiar"
   // ============================================================
 
+  // Todas las fotos se copian en -O (500px). NO usar -F: el CDN la entrega en
+  // un lienzo de 1200px con margen blanco que la foto original no tiene.
   function upscaleImageUrl(url) {
-    return url.replace(/-O(\.[a-zA-Z0-9]+)(\?[^#]*)?$/, "-F$1$2");
+    return url.replace(/-[A-Z](\.[a-zA-Z0-9]+)(\?[^#]*)?$/, "-O$1$2");
   }
 
   function extractFromInternalCarousel() {
@@ -1363,6 +1365,7 @@
 
     const BULLET_OP_LABEL = { add: "Agregar", remove: "Eliminar", other: "Revisar" };
     const BULLET_OP_COLOR = { add: "#1a7f37", remove: "#b42318", other: "#8a5a00" };
+    const BULLET_OP_BG = { add: "#e6f4ea", remove: "#fdecea", other: "#fff7e6" };
     const bulletCheckboxes = [];
     const bulletEls = [];
     if (bullets.length) {
@@ -1373,7 +1376,9 @@
       list.appendChild(heading);
       bullets.forEach((bullet, idx) => {
         const row = document.createElement("div");
-        row.style.cssText = "display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid #f1f2f4";
+        row.style.cssText =
+          "display:flex;gap:8px;align-items:flex-start;padding:6px 8px;margin-top:4px;border-radius:6px;" +
+          `background:${BULLET_OP_BG[bullet.op]};border-left:4px solid ${BULLET_OP_COLOR[bullet.op]}`;
         const cb = document.createElement("input");
         cb.type = "checkbox";
         cb.checked = true;
@@ -1873,11 +1878,9 @@
     return { attributes, notes, unreadable, bullets };
   }
 
-  // Las miniaturas vienen en 160px (-T). NO usar -F: el CDN la entrega en un
-  // lienzo de 1200px con margen blanco que la preview no muestra. -B (800px)
-  // es la misma foto sin ese margen.
+  // Las miniaturas vienen en 160px (-T); se copian en -O, igual que el resto.
   function fullSizeReviewImage(url) {
-    return url.replace(/-T(\.[a-zA-Z0-9]+)(\?[^#]*)?$/, "-B$1$2");
+    return upscaleImageUrl(url);
   }
 
   // Cada aviso "Foto N: Aprobado" tiene al lado el de "Sin impacto
@@ -2232,9 +2235,9 @@
       return btn;
     };
     const BULLET_GROUPS = [
-      { op: "add", title: "Bullets para agregar", color: "#1a7f37" },
-      { op: "remove", title: "Bullets para eliminar", color: "#b42318" },
-      { op: "other", title: "Bullets para revisar", color: "#8a5a00" },
+      { op: "add", title: "Bullets para agregar", color: "#1a7f37", bg: "#e6f4ea" },
+      { op: "remove", title: "Bullets para eliminar", color: "#b42318", bg: "#fdecea" },
+      { op: "other", title: "Bullets para revisar", color: "#8a5a00", bg: "#fff7e6" },
     ];
     BULLET_GROUPS.forEach((group) => {
       const items = bullets.filter((bullet) => (bullet.op || "other") === group.op);
@@ -2249,9 +2252,11 @@
       detail.appendChild(head);
       items.forEach((bullet) => {
         const item = document.createElement("div");
-        item.style.cssText = "display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid #f1f2f4";
+        item.style.cssText =
+          "display:flex;gap:8px;align-items:flex-start;padding:6px 8px;margin-top:4px;border-radius:6px;" +
+          `background:${group.bg};border-left:4px solid ${group.color}`;
         const text = document.createElement("div");
-        text.style.cssText = "flex:1;min-width:0;word-break:break-word;color:#374151";
+        text.style.cssText = "flex:1;min-width:0;word-break:break-word;color:#1f2328";
         text.textContent = bullet.text;
         item.append(text, copyButton(() => bullet.text, "Copiar"));
         detail.appendChild(item);
