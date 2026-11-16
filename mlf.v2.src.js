@@ -1787,10 +1787,11 @@
     return { attributes, notes, unreadable };
   }
 
-  // Las miniaturas vienen en 160px (-T). Con -F el CDN entrega la foto
-  // completa, igual que hace upscaleImageUrl con las -O.
+  // Las miniaturas vienen en 160px (-T). NO usar -F: el CDN la entrega en un
+  // lienzo de 1200px con margen blanco que la preview no muestra. -B (800px)
+  // es la misma foto sin ese margen.
   function fullSizeReviewImage(url) {
-    return url.replace(/-T(\.[a-zA-Z0-9]+)(\?[^#]*)?$/, "-F$1$2");
+    return url.replace(/-T(\.[a-zA-Z0-9]+)(\?[^#]*)?$/, "-B$1$2");
   }
 
   // Cada aviso "Foto N: Aprobado" tiene al lado el de "Sin impacto
