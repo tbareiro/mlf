@@ -1218,7 +1218,7 @@
   }
 
   function showAttributePicker({
-    headerText, attributes, images = [], kind, notice, emptyText, copyButtonText,
+    headerText, attributes, images = [], bullets = [], kind, notice, emptyText, copyButtonText,
   }) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
@@ -1243,7 +1243,7 @@
       overlay.appendChild(noticeEl);
     }
 
-    if (!attributes.length && !images.length) {
+    if (!attributes.length && !images.length && !bullets.length) {
       const msg = document.createElement("div");
       msg.style.cssText = "padding:16px 14px;color:#374151;line-height:1.5";
       msg.textContent = emptyText;
@@ -1361,6 +1361,44 @@
       list.appendChild(imagesGrid);
     }
 
+    const BULLET_OP_LABEL = { add: "Agregar", remove: "Eliminar", other: "Revisar" };
+    const BULLET_OP_COLOR = { add: "#1a7f37", remove: "#b42318", other: "#8a5a00" };
+    const bulletCheckboxes = [];
+    const bulletEls = [];
+    if (bullets.length) {
+      const heading = document.createElement("div");
+      heading.style.cssText =
+        "padding:10px 4px 4px;font-weight:600;font-size:12px;color:#1f2328;border-top:1px solid #f1f2f4;margin-top:4px";
+      heading.textContent = "Bullets MF (" + bullets.length + ")";
+      list.appendChild(heading);
+      bullets.forEach((bullet, idx) => {
+        const row = document.createElement("div");
+        row.style.cssText = "display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid #f1f2f4";
+        const cb = document.createElement("input");
+        cb.type = "checkbox";
+        cb.checked = true;
+        cb.dataset.idx = String(idx);
+        cb.style.cssText = "margin-top:2px;cursor:pointer;flex:0 0 auto";
+        bulletCheckboxes.push(cb);
+        const text = document.createElement("div");
+        text.style.cssText = "min-width:0;flex:1";
+        const tag = document.createElement("div");
+        tag.style.cssText = "font-size:11px;font-weight:600;color:" + BULLET_OP_COLOR[bullet.op];
+        tag.textContent = BULLET_OP_LABEL[bullet.op] + (bullet.op === "other" ? " (" + bullet.action + ")" : "");
+        const valueEl = document.createElement("div");
+        valueEl.contentEditable = "true";
+        valueEl.spellcheck = false;
+        valueEl.style.cssText =
+          "color:#374151;word-break:break-word;max-height:6em;overflow-y:auto;cursor:text;" +
+          "border:1px solid transparent;border-radius:4px;padding:2px 4px;margin:2px -4px 0;outline:none";
+        valueEl.textContent = bullet.text;
+        bulletEls.push(valueEl);
+        text.append(tag, valueEl);
+        row.append(cb, text);
+        list.appendChild(row);
+      });
+    }
+
     const footer = document.createElement("div");
     footer.style.cssText = "padding:8px 12px 12px;border-top:1px solid #e5e7eb";
 
@@ -1383,8 +1421,15 @@
       const selectedImages = imageCheckboxes
         .filter((cb) => cb.checked)
         .map((cb) => images[Number(cb.dataset.idx)].url);
-      if (!selected.length && !selectedImages.length) {
-        status.textContent = images.length ? "Seleccioná al menos un atributo o una foto." : "Seleccioná al menos un atributo.";
+      const selectedBullets = bulletCheckboxes
+        .filter((cb) => cb.checked)
+        .map((cb) => {
+          const idx = Number(cb.dataset.idx);
+          return { op: bullets[idx].op, action: bullets[idx].action, text: bulletEls[idx].innerText.trim() };
+        })
+        .filter((bullet) => bullet.text);
+      if (!selected.length && !selectedImages.length && !selectedBullets.length) {
+        status.textContent = "Seleccioná al menos un elemento.";
         return;
       }
       const payload = JSON.stringify({
@@ -1393,13 +1438,15 @@
         ts: Date.now(),
         source: location.href,
         images: selectedImages.length ? selectedImages : undefined,
+        bullets: selectedBullets.length ? selectedBullets : undefined,
         attributes: selected.map(({ id, label, value, multiValue, scope, action, original }) => ({
           id, label, value, multiValue, scope, action, original,
         })),
       });
       const countLabel = [
-        selected.length || !selectedImages.length ? `${selected.length} atributo(s)` : null,
+        selected.length || (!selectedImages.length && !selectedBullets.length) ? `${selected.length} atributo(s)` : null,
         selectedImages.length ? `${selectedImages.length} foto(s)` : null,
+        selectedBullets.length ? `${selectedBullets.length} bullet(s)` : null,
       ].filter(Boolean).join(" + ");
       try {
         await navigator.clipboard.writeText(payload);
@@ -1752,6 +1799,7 @@
     const attributes = [];
     const notes = [];
     const unreadable = [];
+    const bullets = [];
     document.querySelectorAll(".review-input-decorator__wrapper").forEach((card) => {
       // La descripción no es un .cp-form-field. Se copia si es una corrección
       // manual aprobada o si fue rechazada (llega destildada, con el motivo, para
@@ -1779,6 +1827,19 @@
 
       if (!card.querySelector(".review-input-decorator__manual-impact")) return;
       if (!card.querySelector(".review-action-buttons__approve--selected")) return;
+
+      // MF (bullets): no se pegan solos, se llevan al resumen del pegado
+      // para cargarlos a mano.
+      const bulletEls = card.querySelectorAll(".main-feature-field .andes-list__item-primary");
+      if (bulletEls.length) {
+        const action = cleanText(card.querySelector(".review-input-decorator__correction-meta .andes-badge__content"));
+        const op = /agreg/i.test(action) ? "add" : /elimin/i.test(action) ? "remove" : "other";
+        bulletEls.forEach((el) => {
+          const text = cleanText(el);
+          if (text) bullets.push({ op, action, text });
+        });
+        return;
+      }
 
       const freeText = card.querySelector(".review-additional-suggestions__field textarea");
       if (freeText) {
@@ -1809,7 +1870,7 @@
         : `${action}. Original: ${original || "(vacío)"}`;
       attributes.push({ id, label, value, action, original, hint });
     });
-    return { attributes, notes, unreadable };
+    return { attributes, notes, unreadable, bullets };
   }
 
   // Las miniaturas vienen en 160px (-T). NO usar -F: el CDN la entrega en un
@@ -1856,7 +1917,7 @@
       showToast('No encontré la sugerencia: usá "Copiar Fallas" parado en la herramienta de sugerencias.');
       return;
     }
-    const { attributes, notes, unreadable } = extractManualImpactCorrections();
+    const { attributes, notes, unreadable, bullets } = extractManualImpactCorrections();
     const { images, needsReorder, hasNewCover } = extractManualImpactPhotos();
     const notices = [];
     if (needsReorder) notices.push("Reordenar a mano: seguí el orden de la grilla de fotos de la sugerencia");
@@ -1864,12 +1925,13 @@
     if (notes.length) notices.push(`Leer, no se pega: ${notes.join(" / ")}`);
     if (unreadable.length) notices.push(`Revisar a mano: ${unreadable.join(", ")}`);
     showAttributePicker({
-      headerText: "MLF — Fallas (" + (attributes.length + images.length) + ")",
+      headerText: "MLF — Fallas (" + (attributes.length + images.length + bullets.length) + ")",
       attributes,
       images,
+      bullets,
       kind: "fallas",
       notice: notices.join(" · ") || null,
-      emptyText: "No hay atributos ni fotos para copiar en esta sugerencia.",
+      emptyText: "No hay atributos, fotos ni bullets para copiar en esta sugerencia.",
       copyButtonText: "Copiar seleccionados",
     });
   }
@@ -2108,7 +2170,7 @@
 
   // Reemplaza al toast en Fallas. Si todo salió bien queda en una línea para
   // no molestar, y se abre solo cuando hay algo para revisar.
-  function showFallasSummary({ rows, others, photoLines, photoWarnings }) {
+  function showFallasSummary({ rows, others, photoLines, photoWarnings, bullets = [] }) {
     const changed = rows.filter((row) => row.changed).length;
     const alreadySet = rows.filter((row) => row.alreadySet).length;
     const toReview = rows.filter((row) => row.warning).length + others.length + photoWarnings.length;
@@ -2127,8 +2189,9 @@
     const title = document.createElement("div");
     title.style.cssText = "flex:1";
     title.textContent = [
-      `✓ ${changed} cambiado(s)`,
+      rows.length || !bullets.length ? `✓ ${changed} cambiado(s)` : null,
       alreadySet ? `${alreadySet} ya estaba(n) bien` : null,
+      bullets.length ? `${bullets.length} bullet(s) MF para cargar a mano` : null,
       ...photoLines,
       toReview ? `⚠ ${toReview} para revisar` : null,
     ].filter(Boolean).join(" · ");
@@ -2151,6 +2214,49 @@
     };
     const showValue = (value) => value || "(vacío)";
     const WARNING_STYLE = "margin-top:2px;font-size:11px;color:#8a5a00";
+
+    // MF: los bullets no se pegan solos. Quedan acá, separados por qué hay
+    // que hacer, con un botón para copiar cada uno (o todos los de un grupo).
+    const copyButton = (getText, label) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = label;
+      btn.style.cssText =
+        "flex:0 0 auto;border:1px solid #d0d5dd;border-radius:5px;background:#fff;color:#1f2328;" +
+        "font-size:11px;font-weight:600;padding:2px 8px;cursor:pointer";
+      btn.onclick = async () => {
+        const ok = await copyTextToClipboard(getText());
+        btn.textContent = ok ? "Copiado ✓" : "Error";
+        setTimeout(() => (btn.textContent = label), 1200);
+      };
+      return btn;
+    };
+    const BULLET_GROUPS = [
+      { op: "add", title: "Bullets para agregar", color: "#1a7f37" },
+      { op: "remove", title: "Bullets para eliminar", color: "#b42318" },
+      { op: "other", title: "Bullets para revisar", color: "#8a5a00" },
+    ];
+    BULLET_GROUPS.forEach((group) => {
+      const items = bullets.filter((bullet) => (bullet.op || "other") === group.op);
+      if (!items.length) return;
+      const head = document.createElement("div");
+      head.style.cssText = "display:flex;align-items:center;gap:8px;padding:8px 0 2px";
+      const headTitle = document.createElement("div");
+      headTitle.style.cssText = "flex:1;font-weight:600;color:" + group.color;
+      headTitle.textContent = `${group.title} (${items.length})`;
+      head.appendChild(headTitle);
+      if (items.length > 1) head.appendChild(copyButton(() => items.map((b) => b.text).join("\n"), "Copiar todos"));
+      detail.appendChild(head);
+      items.forEach((bullet) => {
+        const item = document.createElement("div");
+        item.style.cssText = "display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid #f1f2f4";
+        const text = document.createElement("div");
+        text.style.cssText = "flex:1;min-width:0;word-break:break-word;color:#374151";
+        text.textContent = bullet.text;
+        item.append(text, copyButton(() => bullet.text, "Copiar"));
+        detail.appendChild(item);
+      });
+    });
 
     rows.forEach((row) => {
       const item = document.createElement("div");
@@ -2178,7 +2284,7 @@
           "font-size:12px;color:#b42318;word-break:break-word"
         );
       });
-    } else {
+    } else if (rows.length || !bullets.length) {
       addLine(detail, "Otros campos que cambiaron: ninguno", "padding-top:8px;font-size:12px;color:#6b7280");
     }
 
@@ -2187,7 +2293,7 @@
       toggle.textContent = open ? "▾" : "▴";
     };
     toggle.onclick = () => setOpen(detail.style.display === "none");
-    setOpen(toReview > 0);
+    setOpen(toReview > 0 || bullets.length > 0);
 
     box.append(header, detail);
     document.getElementById("mlf-bk-summary")?.remove();
@@ -2197,13 +2303,17 @@
   async function pasteFallasPayload(payload) {
     const attributes = (payload?.attributes || []).filter((attr) => attr.id);
     const images = payload?.images || [];
-    if (!attributes.length && !images.length) {
+    const bullets = (payload?.bullets || []).filter((bullet) => bullet && bullet.text);
+    if (!attributes.length && !images.length && !bullets.length) {
       showToast('No hay datos de "Copiar Fallas" para pegar.');
       return;
     }
-    const result = await pasteFallas(attributes, images);
+    const result =
+      attributes.length || images.length
+        ? await pasteFallas(attributes, images)
+        : { rows: [], others: [], photoLines: [], photoWarnings: [] };
     if (result.blocked) showToast(result.blocked);
-    else showFallasSummary(result);
+    else showFallasSummary({ ...result, bullets });
   }
 
   // ============================================================
@@ -2422,6 +2532,8 @@
     const imgCount = (payload.images || []).length;
     if (attrCount) parts.push(`${attrCount} atributo(s)`);
     if (imgCount) parts.push(`${imgCount} foto(s)`);
+    const bulletCount = (payload.bullets || []).length;
+    if (bulletCount) parts.push(`${bulletCount} bullet(s)`);
     let host = "";
     try { host = new URL(payload.source).hostname.replace(/^www\./, ""); } catch (_) { /* sin source */ }
     let age = "";
