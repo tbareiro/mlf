@@ -1265,7 +1265,7 @@
       const cb = document.createElement("input");
       cb.type = "checkbox";
       cb.id = OVERLAY_ID + "-cb-" + idx;
-      cb.checked = !attr.multiValue;
+      cb.checked = !attr.multiValue && !attr.uncheckedByDefault;
       cb.dataset.idx = String(idx);
       cb.style.cssText = "margin-top:2px;cursor:pointer;flex:0 0 auto";
       checkboxes.push(cb);
@@ -1282,6 +1282,7 @@
       valueEl.style.cssText =
         "color:#374151;word-break:break-word;max-height:6em;overflow-y:auto;cursor:text;" +
         "border:1px solid transparent;border-radius:4px;padding:2px 4px;margin:2px -4px 0;outline:none";
+      if (attr.value.includes("\n")) valueEl.style.cssText += ";white-space:pre-wrap;max-height:14em";
       valueEl.textContent = attr.value;
       valueEl.addEventListener("focus", () => {
         valueEl.style.borderColor = "#3483fa";
@@ -1376,7 +1377,7 @@
         .filter((cb) => cb.checked)
         .map((cb) => {
           const idx = Number(cb.dataset.idx);
-          return { ...attributes[idx], value: valueEls[idx].textContent.trim() };
+          return { ...attributes[idx], value: valueEls[idx].innerText.trim() };
         })
         .filter((attr) => attr.value.length > 0 || attr.action === "Eliminado");
       const selectedImages = imageCheckboxes
@@ -1752,6 +1753,30 @@
     const notes = [];
     const unreadable = [];
     document.querySelectorAll(".review-input-decorator__wrapper").forEach((card) => {
+      // La descripción no es un .cp-form-field. Se copia si es una corrección
+      // manual aprobada o si fue rechazada (llega destildada, con el motivo, para
+      // editarla antes de copiar).
+      const descEl = card.querySelector('.cp-custom-text-field[aria-label$="CP_DESCRIPTION"]');
+      if (descEl) {
+        const rejected = !!card.querySelector(".review-action-buttons__reject--selected");
+        const approvedManual =
+          !!card.querySelector(".review-input-decorator__manual-impact") &&
+          !!card.querySelector(".review-action-buttons__approve--selected");
+        const value = (descEl.textContent || "").replace(/\r\n/g, "\n").trim();
+        if ((!rejected && !approvedManual) || !value) return;
+        const action = cleanText(card.querySelector(".review-input-decorator__correction-meta .andes-badge__content"));
+        let hint = action;
+        if (rejected) {
+          const code = cleanText(card.querySelector(".review-input-decorator__rejection-content .andes-badge__content"));
+          const reason = cleanText(card.querySelector(".review-input-decorator__rejection-content > span:last-child"));
+          hint = `Rechazada${code ? ` (${code})` : ""}: ${reason || "revisar antes de copiar"}`;
+        }
+        attributes.push({
+          id: "CP_DESCRIPTION", label: "Descripción", value, scope: "child", action, hint, uncheckedByDefault: rejected,
+        });
+        return;
+      }
+
       if (!card.querySelector(".review-input-decorator__manual-impact")) return;
       if (!card.querySelector(".review-action-buttons__approve--selected")) return;
 
@@ -1865,6 +1890,13 @@
   // nombre: acá el producto ya tiene datos y un match dudoso pisaría uno bueno.
   function findBcField(root, id) {
     if (!root) return null;
+    if (id === "CP_DESCRIPTION") {
+      const byName = root.querySelector('[name="CP_DESCRIPTION"], [name$=".CP_DESCRIPTION"]');
+      if (byName) return byName;
+      const container = findContainerForLabel(root, "Descripción");
+      const editable = '[contenteditable="true"], textarea';
+      return container && (container.matches(editable) ? container : container.querySelector(editable));
+    }
     return (
       Array.from(root.querySelectorAll(".cp-form-field")).find((field) => fieldCode(field) === id) ||
       root.querySelector(`[name="${id}"], [name^="${id}["], [name*=".${id}["], [name$=".${id}"]`)
@@ -1927,7 +1959,7 @@
         values.set(label, { label, value: tags.join(", ") });
       });
       root.querySelectorAll('[contenteditable="true"]').forEach((el) => {
-        values.set("Descripción", { label: "Descripción", value: cleanText(el) });
+        values.set("CP_DESCRIPTION", { label: "Descripción", value: cleanText(el) });
       });
     });
     return values;
@@ -1954,7 +1986,8 @@
     await expandCollapsedSections(parent);
 
     // Se revisa antes de escribir para no dejar un pegado por la mitad.
-    const needsVariant = images.length > 0 || attributes.some((attr) => !findBcField(parent, attr.id));
+    const needsVariant =
+      images.length > 0 || attributes.some((attr) => attr.scope === "child" || !findBcField(parent, attr.id));
     const variants = openVariantCards();
     if (needsVariant && variants.length !== 1) {
       return {
@@ -1973,17 +2006,30 @@
     // El campo se busca recién al escribirlo: BC puede volver a dibujar el
     // formulario después de cada cambio y dejar vieja una referencia anterior.
     async function fillAttr(attr) {
-      const target = findBcField(parent, attr.id) || findBcField(openVariantCards()[0], attr.id);
+      const variantCard = openVariantCards()[0];
+      const target =
+        attr.scope === "child"
+          ? findBcField(variantCard, attr.id)
+          : findBcField(parent, attr.id) || findBcField(variantCard, attr.id);
       if (!target) return "sin-match";
       if (isProtected(target, protectedTargets)) return "protegido";
       if (isMultiValueTarget(target)) return "manual";
-      const current = target.matches(".cp-form-field") ? readBcValue(target) : target.value.trim();
+      const isInput = /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName);
+      const current = target.matches(".cp-form-field")
+        ? readBcValue(target)
+        : isInput
+          ? target.value.trim()
+          : cleanText(target);
       if (sameValue(current, attr.action === "Eliminado" ? "" : attr.value)) return "ya-estaba";
       if (attr.action === "Eliminado") return clearBcField(target) ? "vaciado" : "pendiente";
       // Sobre un producto real, una opción parecida es un dato equivocado:
       // sin coincidencia exacta se avisa en vez de elegir la más cercana.
+      if (target.isContentEditable) {
+        setContentEditableValue(target, attr.value);
+        return "texto";
+      }
       const exactAttr = { ...attr, exactOption: true };
-      const outcome = target.matches(".cp-form-field")
+      const outcome = target.matches(".cp-form-field") || !isInput
         ? await fillByContainer(target, exactAttr)
         : await fillByName(target, exactAttr);
       return outcome === "sin-match" ? "no-en-lista" : outcome;
@@ -2002,8 +2048,9 @@
     }
 
     // Primero lo general: completarlo puede resetear la sección de variante.
-    const generalAttrs = attributes.filter((attr) => findBcField(parent, attr.id));
-    const variantAttrs = attributes.filter((attr) => !findBcField(parent, attr.id));
+    const isGeneral = (attr) => attr.scope !== "child" && !!findBcField(parent, attr.id);
+    const generalAttrs = attributes.filter(isGeneral);
+    const variantAttrs = attributes.filter((attr) => !isGeneral(attr));
     await fillList(generalAttrs);
     if (variantAttrs.length) {
       await new Promise((r) => setTimeout(r, 400));
