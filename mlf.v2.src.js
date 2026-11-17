@@ -1853,27 +1853,45 @@
         return;
       }
 
+      // Título y Código universal no son .cp-form-field: el código sale del id
+      // del contenedor y el valor, de un texto fijo o de etiquetas (tags).
       const field = card.querySelector(".cp-form-field");
-      if (!field) return;
-      const labelEl = field.querySelector(".cp-form-field__label");
-      const label = (labelEl?.getAttribute("title") || cleanText(labelEl)).replace(/\s*\(Obligatorio\)\s*$/i, "");
-      const id = fieldCode(field);
+      const standalone = field ? null : card.querySelector(".cp-custom-text-field, .cp-custom-multivalue-field");
+      if (!field && !standalone) return;
+      const labelEl = field?.querySelector(".cp-form-field__label");
+      const label = field
+        ? (labelEl?.getAttribute("title") || cleanText(labelEl)).replace(/\s*\(Obligatorio\)\s*$/i, "")
+        : cleanText(card.closest("section.field-wrapper")?.querySelector(".field-wrapper__title--text")) ||
+          card.closest("section.field-wrapper")?.getAttribute("aria-label") || "";
+      const standaloneAria = standalone?.getAttribute("aria-label") || "";
+      const id = field
+        ? fieldCode(field)
+        : /^[A-Z0-9_]+$/.test(card.id) ? card.id : (standaloneAria.match(/([A-Z0-9_]+)$/) || [])[1] || "";
       const action = cleanText(card.querySelector(".review-input-decorator__correction-meta .andes-badge__content"));
       const originalEl = card.querySelector(".review-input-decorator__original-value")?.cloneNode(true);
       originalEl?.querySelector(".review-input-decorator__original-label")?.remove();
       const original = cleanText(originalEl);
-      const value = action === "Eliminado" ? "" : readReviewValue(field);
+      const standaloneTags = standalone
+        ? Array.from(standalone.querySelectorAll(".andes-tag__label")).map(cleanText).filter(Boolean)
+        : [];
+      const value =
+        action === "Eliminado"
+          ? ""
+          : field
+            ? readReviewValue(field)
+            : standaloneTags.length ? standaloneTags.join(", ") : cleanText(standalone);
 
       // Sí/No todavía no tiene una captura que muestre cómo se marca el
       // valor elegido: mejor avisar que pegar algo inventado.
-      if (!id || field.classList.contains("cp-form-field--boolean") || (!value && action !== "Eliminado")) {
+      if (!id || field?.classList.contains("cp-form-field--boolean") || (!value && action !== "Eliminado")) {
         unreadable.push(label || "Campo sin nombre");
         return;
       }
       const hint = action === "Eliminado"
         ? `Se va a vaciar. Original: ${original || "(vacío)"}`
         : `${action}. Original: ${original || "(vacío)"}`;
-      attributes.push({ id, label, value, action, original, hint });
+      const scope = standaloneAria.startsWith("CHILD") ? "child" : undefined;
+      attributes.push({ id, label, value, action, original, hint, scope });
     });
     return { attributes, notes, unreadable, bullets };
   }
@@ -2152,7 +2170,9 @@
       else if (!warning && !alreadySet && attr.original && !sameValue(oldValue, attr.original)) {
         warning = `La sugerencia decía original ${attr.original}`;
       }
-      return { label: attr.label, oldValue, newValue, warning, alreadySet, changed: !sameValue(oldValue, newValue) };
+      // Lo que no se pudo escribir se deja a mano: se guarda el valor para ofrecer un botón Copiar.
+      const copyValue = FALLAS_NOT_WRITTEN[outcome] && expected ? expected : "";
+      return { label: attr.label, oldValue, newValue, warning, alreadySet, copyValue, changed: !sameValue(oldValue, newValue) };
     });
 
     const pastedIds = new Set(attributes.map((attr) => attr.id));
@@ -2275,6 +2295,12 @@
         "color:#374151;word-break:break-word"
       );
       if (row.warning) addLine(item, "⚠ " + row.warning, WARNING_STYLE);
+      if (row.copyValue) {
+        const copyRow = document.createElement("div");
+        copyRow.style.cssText = "margin-top:4px";
+        copyRow.appendChild(copyButton(() => row.copyValue, "Copiar valor"));
+        item.appendChild(copyRow);
+      }
       detail.appendChild(item);
     });
 
