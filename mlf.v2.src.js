@@ -2031,10 +2031,16 @@
         const label = (labelEl?.getAttribute("title") || cleanText(labelEl)).replace(/\s*\(Obligatorio\)\s*$/i, "");
         values.set(id, { label, value: readBcValue(field) });
       });
+      const gtins = [];
       root.querySelectorAll("input[name],textarea[name]").forEach((el) => {
+        if (/GTIN\[\d+\]$/.test(el.name)) {
+          if (el.value.trim()) gtins.push(el.value.trim());
+          return;
+        }
         const id = (el.name.match(/([A-Z0-9_]+)(\[\d+\])?$/) || [])[1];
         if (id && !el.closest(".cp-form-field")) values.set(id, { label: id, value: el.value.trim() });
       });
+      if (gtins.length) values.set("GTIN", { label: "Código universal", value: gtins.join(", ") });
       root.querySelectorAll(".cp-custom-multivalue-field").forEach((el) => {
         if (el.closest(".cp-form-field")) return;
         const tags = Array.from(el.querySelectorAll(".andes-tag__label")).map(cleanText);
@@ -2051,6 +2057,47 @@
   function sameValue(a, b) {
     const comparable = (text) => normalize(text).replace(/,/g, ".").replace(/\s+/g, "");
     return comparable(a) === comparable(b);
+  }
+
+  // Código universal: BC tiene un input por código (CHILD[n].GTIN[i]) y un
+  // botón "Agregar otro código". Agregar = poner cada código en un input
+  // libre (abriendo uno si hace falta) sin tocar los que ya están; Eliminar =
+  // vaciar solo el input que tiene ese código.
+  const gtinCodesOf = (value) => String(value || "").split(/\s*,\s*/).filter(Boolean);
+
+  function gtinInputs(root) {
+    return Array.from(root.querySelectorAll('input[name*="GTIN["]')).filter((el) => isVisible(el));
+  }
+
+  async function fillGtin(attr, root) {
+    if (!root) return "sin-match";
+    const codes = gtinCodesOf(attr.value);
+    if (!gtinInputs(root).length || !codes.length) return "sin-match";
+
+    if (attr.action === "Eliminado") {
+      let cleared = 0;
+      for (const code of codes) {
+        const input = gtinInputs(root).find((el) => el.value.trim() === code);
+        if (input && clearBcField(input)) cleared++;
+      }
+      return cleared === codes.length ? "vaciado" : "pendiente";
+    }
+
+    let written = 0;
+    for (const code of codes) {
+      if (gtinInputs(root).some((el) => el.value.trim() === code)) continue;
+      let input = gtinInputs(root).find((el) => !el.value.trim() && !el.readOnly && !el.disabled);
+      if (!input) {
+        const before = gtinInputs(root).length;
+        root.querySelector(".cp-section-gtin__btn")?.click();
+        for (let i = 0; i < 15 && gtinInputs(root).length <= before; i++) await sleep(100);
+        input = gtinInputs(root).find((el) => !el.value.trim() && !el.readOnly && !el.disabled);
+      }
+      if (!input) return "manual";
+      setNativeValue(input, code);
+      written++;
+    }
+    return written ? "texto" : "ya-estaba";
   }
 
   const FALLAS_NOT_WRITTEN = {
@@ -2090,6 +2137,7 @@
     // formulario después de cada cambio y dejar vieja una referencia anterior.
     async function fillAttr(attr) {
       const variantCard = openVariantCards()[0];
+      if (attr.id === "GTIN") return fillGtin(attr, attr.scope === "child" ? variantCard : parent);
       const target =
         attr.scope === "child"
           ? findBcField(variantCard, attr.id)
@@ -2165,7 +2213,12 @@
       const expected = attr.action === "Eliminado" ? "" : attr.value;
       let warning = FALLAS_NOT_WRITTEN[outcome] || "";
       const alreadySet = outcome === "ya-estaba";
-      if (!warning && !sameValue(newValue, expected)) warning = `Quedó distinto a lo pedido: ${expected || "(vacío)"}`;
+      const nowCodes = gtinCodesOf(newValue);
+      const asked =
+        attr.id === "GTIN"
+          ? gtinCodesOf(attr.value).every((code) => nowCodes.includes(code) === (attr.action !== "Eliminado"))
+          : sameValue(newValue, expected);
+      if (!warning && !asked) warning = `Quedó distinto a lo pedido: ${expected || "(vacío)"}`;
       else if (!warning && outcome === "dropdown-added") warning = "Se agregó como opción nueva: revisá que esté bien escrito";
       else if (!warning && !alreadySet && attr.original && !sameValue(oldValue, attr.original)) {
         warning = `La sugerencia decía original ${attr.original}`;
