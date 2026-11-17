@@ -607,6 +607,7 @@
       sinMatch: [], approx: [], added: [], duplicated: [], protegido: [],
     };
     const filledTargets = new Set();
+    const rowByAttr = new Map();
 
     function attrLabel(attr) {
       return attr.id ? `${attr.label} (${attr.id})` : attr.label;
@@ -615,6 +616,11 @@
     async function fillAttr(attr) {
       const outcome = await fillOne(scopeRoot, attr, filledTargets, protectedTargets);
       const label = attrLabel(attr);
+      rowByAttr.set(attr, {
+        label,
+        value: attr.value,
+        warning: PASTE_OUTCOME_WARNING[outcome] || (outcome.endsWith("-approx") ? PASTE_OUTCOME_WARNING.approx : ""),
+      });
       if (outcome === "protegido") {
         results.protegido.push(label);
       } else if (outcome === "duplicado") {
@@ -673,8 +679,17 @@
     if (results.protegido.length) detailLines.push(`Protegidos (sin tocar): ${results.protegido.join(", ")}`);
     if (results.sinMatch.length) detailLines.push(`Sin match: ${results.sinMatch.join(", ")}`);
 
-    return { parts, detailLines };
+    return { parts, detailLines, rows: Array.from(rowByAttr.values()) };
   }
+
+  // Qué avisar por cada resultado de fillOne que no es un pegado limpio.
+  const PASTE_OUTCOME_WARNING = {
+    "sin-match": "No se encontró el campo en la página: cargar a mano",
+    protegido: "Campo protegido: no se toca",
+    duplicado: "Repetido: es el mismo campo que otro atributo",
+    approx: "Se eligió una opción aproximada: revisar",
+    "dropdown-added": "Se agregó como opción nueva: revisar que esté bien escrito",
+  };
 
   /**
    * Pegado de fotos, reutilizado por "Comparator"/"Variante" (cuando el
@@ -689,19 +704,25 @@
       return {
         parts: ["fotos: sin campo visible"],
         detailLines: ["Fotos: abrí la sección de fotos de la variante y volvé a correr esto."],
+        failedUrls: urls.map((u, i) => ({ label: `Foto ${i + 1}`, value: typeof u === "string" ? u : String(u?.url || "") })),
       };
     }
     const results = await Promise.allSettled(urls.map((url, i) => urlToFile(url, i)));
     const files = [];
     const failed = [];
+    const failedUrls = [];
     results.forEach((r, i) => {
       if (r.status === "fulfilled") files.push(r.value);
-      else failed.push(i + 1);
+      else {
+        failed.push(i + 1);
+        failedUrls.push({ label: `Foto ${i + 1}`, value: typeof urls[i] === "string" ? urls[i] : String(urls[i]?.url || "") });
+      }
     });
     if (!files.length) {
       return {
         parts: ["0 fotos pegadas"],
         detailLines: failed.length ? [`Fotos: no se pudo descargar ninguna (fallaron: ${failed.join(", ")})`] : [],
+        failedUrls,
       };
     }
     const dt = new DataTransfer();
@@ -711,6 +732,7 @@
     return {
       parts: [`${files.length} foto(s) pegada(s)`],
       detailLines: failed.length ? [`Fotos: ${failed.length} fallaron (foto ${failed.join(", ")})`] : [],
+      failedUrls,
     };
   }
 
@@ -1522,6 +1544,118 @@
     });
   }
 
+  function makeCopyButton(getText, label) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.style.cssText =
+      "flex:0 0 auto;border:1px solid #d0d5dd;border-radius:5px;background:#fff;color:#1f2328;" +
+      "font-size:11px;font-weight:600;padding:2px 8px;cursor:pointer";
+    btn.onclick = async () => {
+      const ok = await copyTextToClipboard(getText());
+      btn.textContent = ok ? "Copiado ✓" : "Error";
+      setTimeout(() => (btn.textContent = label), 1200);
+    };
+    return btn;
+  }
+
+  // Cuadro de resumen para Comparator, Variante y Fotos (el de Fallas es
+  // showFallasSummary). Lista cada atributo con su valor y un botón Copiar,
+  // así lo que no se pudo pegar queda a mano. Lo que falló va arriba y el
+  // cuadro se abre solo; si todo salió bien queda en una línea.
+  function showPasteSummary({ rows = [], parts = [], detailLines = [], failedUrls = [] }) {
+    const problems = rows.filter((row) => row.warning);
+    const okRows = rows.filter((row) => !row.warning);
+    const toReview = problems.length + failedUrls.length;
+
+    const box = document.createElement("div");
+    box.id = "mlf-bk-summary";
+    box.style.cssText = [
+      "position:fixed", "right:16px", "bottom:16px", "width:400px", "max-height:70vh",
+      "background:#fff", "color:#1f2328", "border-radius:10px", "z-index:2147483647",
+      "box-shadow:0 4px 24px rgba(0,0,0,.3)", "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
+      "display:flex", "flex-direction:column", "overflow:hidden",
+    ].join(";");
+
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;gap:8px;padding:9px 12px;font-weight:600";
+    const title = document.createElement("div");
+    title.style.cssText = "flex:1";
+    title.textContent = [...parts, toReview ? `⚠ ${toReview} para revisar` : null].filter(Boolean).join(" · ");
+    const toggle = document.createElement("button");
+    toggle.style.cssText = "border:none;background:none;cursor:pointer;font-size:13px;color:#6b7280";
+    const close = document.createElement("button");
+    close.textContent = "✕";
+    close.style.cssText = toggle.style.cssText;
+    close.onclick = () => box.remove();
+    header.append(title, toggle, close);
+
+    const detail = document.createElement("div");
+    detail.style.cssText = "overflow-y:auto;padding:0 12px 10px;border-top:1px solid #e5e7eb";
+
+    const addRow = (row, bad) => {
+      const item = document.createElement("div");
+      item.style.cssText =
+        "display:flex;gap:8px;align-items:flex-start;padding:6px 8px;margin-top:6px;border-radius:6px;" +
+        (bad ? "background:#fff7e6;border-left:4px solid #d97706" : "background:#f6f7f9;border-left:4px solid #d0d5dd");
+      const text = document.createElement("div");
+      text.style.cssText = "flex:1;min-width:0;word-break:break-word";
+      const label = document.createElement("div");
+      label.style.cssText = "font-weight:600";
+      label.textContent = row.label;
+      const value = document.createElement("div");
+      value.style.cssText = "color:#374151;white-space:pre-wrap;max-height:8em;overflow:auto";
+      value.textContent = row.value || "(vacío)";
+      text.append(label, value);
+      if (row.warning) {
+        const warn = document.createElement("div");
+        warn.style.cssText = "margin-top:2px;font-size:11px;color:#8a5a00";
+        warn.textContent = "⚠ " + row.warning;
+        text.appendChild(warn);
+      }
+      item.append(text, makeCopyButton(() => row.value || "", "Copiar"));
+      detail.appendChild(item);
+    };
+    const addHead = (text, color) => {
+      const head = document.createElement("div");
+      head.style.cssText = `padding:8px 0 0;font-weight:600;color:${color}`;
+      head.textContent = text;
+      detail.appendChild(head);
+    };
+
+    if (problems.length) {
+      addHead(`Para revisar o cargar a mano (${problems.length})`, "#8a5a00");
+      problems.forEach((row) => addRow(row, true));
+    }
+    if (failedUrls.length) {
+      addHead(`Fotos que no se pegaron (${failedUrls.length})`, "#8a5a00");
+      failedUrls.forEach((row) => addRow({ ...row, warning: "No se pegó: copiá el enlace" }, true));
+    }
+    detailLines
+      .filter((line) => !/^(Sin match|Revisar|Agregados|Repetidos|Protegidos)/.test(line))
+      .forEach((line) => {
+        const el = document.createElement("div");
+        el.style.cssText = "padding-top:6px;font-size:11px;color:#8a5a00";
+        el.textContent = "⚠ " + line;
+        detail.appendChild(el);
+      });
+    if (okRows.length) {
+      addHead(`Pegados (${okRows.length})`, "#1a7f37");
+      okRows.forEach((row) => addRow(row, false));
+    }
+
+    const setOpen = (open) => {
+      detail.style.display = open ? "block" : "none";
+      toggle.textContent = open ? "▾" : "▴";
+    };
+    toggle.onclick = () => setOpen(detail.style.display === "none");
+    setOpen(toReview > 0);
+
+    box.append(header, detail);
+    document.getElementById("mlf-bk-summary")?.remove();
+    document.body.appendChild(box);
+  }
+
   // Pegado "a toda la ficha" (sin acordeón de a una tarjeta) — lo comparten
   // Comp y MO (y los datos sin tipo de versiones viejas).
   async function pasteWholeForm(payload) {
@@ -1535,10 +1669,12 @@
       ? await pasteAttributes(attributes, { scopeRoot: document, expand: true })
       : { parts: [], detailLines: [] };
     const imgResult = images.length ? await pasteImages(images) : { parts: [], detailLines: [] };
-    showToast(
-      [...attrResult.parts, ...imgResult.parts].join(" · "),
-      [...attrResult.detailLines, ...imgResult.detailLines]
-    );
+    showPasteSummary({
+      rows: attrResult.rows,
+      parts: [...attrResult.parts, ...imgResult.parts],
+      detailLines: imgResult.detailLines,
+      failedUrls: imgResult.failedUrls,
+    });
   }
 
   // ============================================================
@@ -1636,10 +1772,12 @@
       ? await pasteAttributes(attributes, { scopeRoot: getScopeRoot(), expand: false })
       : { parts: [], detailLines: [] };
     const imgResult = images.length ? await pasteImages(images) : { parts: [], detailLines: [] };
-    showToast(
-      [...attrResult.parts, ...imgResult.parts].join(" · "),
-      [...attrResult.detailLines, ...imgResult.detailLines]
-    );
+    showPasteSummary({
+      rows: attrResult.rows,
+      parts: [...attrResult.parts, ...imgResult.parts],
+      detailLines: imgResult.detailLines,
+      failedUrls: imgResult.failedUrls,
+    });
   }
 
   // ============================================================
@@ -1749,7 +1887,7 @@
     }
     showToast(`Descargando ${urls.length} foto(s)...`);
     const result = await pasteImages(urls);
-    showToast(result.parts.join(" · "), result.detailLines);
+    showPasteSummary({ parts: result.parts, detailLines: result.detailLines, failedUrls: result.failedUrls });
   }
 
   // ============================================================
@@ -2293,20 +2431,7 @@
 
     // MF: los bullets no se pegan solos. Quedan acá, separados por qué hay
     // que hacer, con un botón para copiar cada uno (o todos los de un grupo).
-    const copyButton = (getText, label) => {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = label;
-      btn.style.cssText =
-        "flex:0 0 auto;border:1px solid #d0d5dd;border-radius:5px;background:#fff;color:#1f2328;" +
-        "font-size:11px;font-weight:600;padding:2px 8px;cursor:pointer";
-      btn.onclick = async () => {
-        const ok = await copyTextToClipboard(getText());
-        btn.textContent = ok ? "Copiado ✓" : "Error";
-        setTimeout(() => (btn.textContent = label), 1200);
-      };
-      return btn;
-    };
+    const copyButton = makeCopyButton;
     const BULLET_GROUPS = [
       { op: "add", title: "Bullets para agregar", color: "#1a7f37", bg: "#e6f4ea" },
       { op: "remove", title: "Bullets para eliminar", color: "#b42318", bg: "#fdecea" },
