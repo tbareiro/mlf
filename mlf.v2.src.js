@@ -446,23 +446,62 @@
 
     const trigger = container.querySelector('[role="combobox"]');
     if (!trigger) return "sin-match";
-    trigger.click();
-    await new Promise((r) => setTimeout(r, 250));
+    const strict = needsExactOption(attr);
+
+    // BC busca las opciones sobre el valor ya cargado: con "Mac Cosmetics"
+    // cargado, buscar "MAC" solo ofrece "Mac Cosmetics" y nunca "Agregar MAC".
+    // La salida es la misma que a mano: dejar en "Sin especificar" y elegir
+    // de nuevo. Solo se hace si el primer intento no cambió el valor.
+    const placeholder = (text) => !text || /^selec+ionar|^selecciona/i.test(normalize(text));
+    const current = comboDisplay(trigger);
+    let r = await pickInCombo(trigger, attr.value, strict);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const unchanged = !r.ok || (!r.exact && sameValue(comboDisplay(trigger), current));
+    if (!r.multi && unchanged && !placeholder(current) && !sameValue(current, attr.value)) {
+      const cleared = await pickInCombo(trigger, "Sin especificar", true);
+      if (cleared.ok) {
+        const retry = await pickInCombo(trigger, attr.value, true);
+        if (retry.ok) r = { ...retry, retried: true };
+        else await pickInCombo(trigger, current, true); // no se pudo: se deja como estaba
+      }
+    }
+    if (!r.ok) return "sin-match";
+    if (r.added) return "dropdown-added";
+    if (!r.exact) return "dropdown-approx";
+    // Verificación: si lo que muestra BC no es lo pedido, se avisa en vez de darlo por bueno.
+    if (!r.multi) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const shown = comboDisplay(trigger);
+      if (shown && !placeholder(shown) && !sameValue(shown, attr.value)) return "dropdown-approx";
+    }
+    return "dropdown";
+  }
+
+  function comboDisplay(trigger) {
+    return (trigger.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  async function pickInCombo(trigger, value, strict) {
     if (trigger.getAttribute("aria-expanded") !== "true") {
       trigger.click();
       await new Promise((r) => setTimeout(r, 250));
+      if (trigger.getAttribute("aria-expanded") !== "true") {
+        trigger.click();
+        await new Promise((r) => setTimeout(r, 250));
+      }
     }
     for (let wait = 0; wait < 4 && !document.querySelector('li[role="option"], li[data-key]'); wait++) {
       await new Promise((r) => setTimeout(r, 150));
     }
-    const r = await clickAndesOption(attr.value, needsExactOption(attr));
+    const first = document.querySelector('li[role="option"][data-key], li[data-key]');
+    const multi = !!first && isMultiSelectOption(first);
+    const r = { ...(await clickAndesOption(value, strict)), multi };
     if (trigger.getAttribute("aria-expanded") === "true") {
       document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
       document.body.click();
+      await new Promise((resolve) => setTimeout(resolve, 150));
     }
-    if (!r.ok) return "sin-match";
-    if (r.added) return "dropdown-added";
-    return r.exact ? "dropdown" : "dropdown-approx";
+    return r;
   }
 
   const PROTECTED_LABELS = ["Tipo de lanzamiento"];
