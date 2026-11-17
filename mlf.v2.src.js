@@ -465,7 +465,7 @@
         else await pickInCombo(trigger, current, true); // no se pudo: se deja como estaba
       }
     }
-    if (!r.ok) return "sin-match";
+    if (!r.ok) return "no-en-lista";
     if (r.added) return "dropdown-added";
     if (!r.exact) return "dropdown-approx";
     // Verificación: si lo que muestra BC no es lo pedido, se avisa en vez de darlo por bueno.
@@ -557,18 +557,25 @@
         }
       }
     }
+    let missed = "sin-match";
     for (const candidateLabel of candidateLabelsFor(attr.label)) {
       const container = findContainerForLabel(scopeRoot, candidateLabel);
       if (!container) continue;
       if (isProtected(container, protectedTargets)) return "protegido";
       if (filledTargets.has(container)) return "duplicado";
       const outcome = await fillByContainer(container, attr);
+      if (outcome === "no-en-lista") {
+        // El campo existe pero no tiene ese valor: no se marca como usado
+        // (el reintento tiene que poder volver a intentarlo).
+        missed = outcome;
+        continue;
+      }
       if (outcome !== "sin-match") {
         filledTargets.add(container);
         return outcome;
       }
     }
-    return "sin-match";
+    return missed;
   }
 
   // Toast persistente (sin auto-cierre) — se usa para el resumen de pegado
@@ -664,7 +671,7 @@
         results.protegido.push(label);
       } else if (outcome === "duplicado") {
         results.duplicated.push(label);
-      } else if (outcome === "sin-match") {
+      } else if (outcome === "sin-match" || outcome === "no-en-lista") {
         results.sinMatch.push(label);
       } else if (outcome.endsWith("-approx")) {
         results[outcome.replace("-approx", "")]++;
@@ -681,7 +688,8 @@
     async function fillList(attrs) {
       const failed = [];
       for (const attr of attrs) {
-        if ((await fillAttr(attr)) === "sin-match") failed.push(attr);
+        const outcome = await fillAttr(attr);
+        if (outcome === "sin-match" || outcome === "no-en-lista") failed.push(attr);
       }
       if (!failed.length) return;
       await new Promise((r) => setTimeout(r, 800));
@@ -724,6 +732,7 @@
   // Qué avisar por cada resultado de fillOne que no es un pegado limpio.
   const PASTE_OUTCOME_WARNING = {
     "sin-match": "No se encontró el campo en la página: cargar a mano",
+    "no-en-lista": "El campo no tiene ese valor en su lista (o no deja agregarlo): quedó como estaba, cargar a mano",
     protegido: "Campo protegido: no se toca",
     duplicado: "Repetido: es el mismo campo que otro atributo",
     approx: "Se eligió una opción aproximada: revisar",
