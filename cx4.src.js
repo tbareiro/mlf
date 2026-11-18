@@ -39,6 +39,8 @@
   const BACKUP_KEY = "mlf.cx4.lastBackup";
   const BACKUP_WARN_DAYS = 7;
   const MAX_SHOWN = 3; // tareas guardadas visibles a la vez (el resto, con el buscador)
+  const GID_URL = "https://catalog-domains.adminml.com/catalogo/bc-admin/crear-productos/";
+  const NO_CREADO = "No se creó";
   const POLL_MS = 1000;
 
   // ============================================================
@@ -286,6 +288,7 @@
     withDup(out);
     out.forEach((row) => {
       row.gid = (gids && gids[rowKey(row)]) || "";
+      row.created = state.crea[rowKey(row)] || "";
     });
     return out;
   }
@@ -479,6 +482,12 @@
     .entry-body { padding: 0 8px 6px; }
     .confirm.mini { margin: 2px 6px 6px; padding: 5px 8px; font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
     .confirm.mini button { padding: 2px 9px; font-size: 12px; }
+    .review { margin-bottom: 8px; padding: 8px 10px; border-radius: 8px; background: #172433; border: 1px solid #28507a; }
+    .review-t { font-weight: 600; }
+    input.created { width: 120px; }
+    button.mini { padding: 0 6px; font-size: 11px; margin-top: 3px; }
+    td a, .review a { color: #6ab0ff; text-decoration: none; }
+    td a:hover, .review a:hover { text-decoration: underline; }
     .gear-dot { color: #f2c14e; }
     details { padding: 0 10px 8px; }
     summary { cursor: pointer; color: #8b8b96; font-size: 12px; margin-bottom: 6px; }
@@ -490,7 +499,9 @@
   const state = {
     meta: { id: "", domain: "" },
     rows: [],
-    gids: {}, // rowKey -> GID escrito a mano
+    gids: {}, // rowKey -> GID Creación escrito a mano
+    crea: {}, // rowKey -> ID del producto creado (lo completa el colaborador)
+    review: null, // { i } mientras se revisan las creaciones fila por fila
     open: false,
     prompt: false, // "¿querés retomar?"
     tracking: new Set(), // tareas con autoguardado activo en esta sesión
@@ -520,19 +531,27 @@
 
   const dash = (v) => (v ? esc(v) : "<span class='empty'>—</span>");
 
-  function rowsTable(rows, editableGid) {
+  const gidUrl = (gid) => GID_URL + encodeURIComponent(gid);
+  const gidLink = (gid) => '<a href="' + esc(gidUrl(gid)) + '" target="_blank" rel="noopener" title="Abrir la creación de este GID">' + esc(gid) + " ↗</a>";
+  const hasId = (r) => r.created && r.created !== NO_CREADO;
+
+  function rowsTable(rows, editable) {
     if (!rows.length) return '<div class="none">Sin filas.</div>';
     return (
-      "<table><thead><tr><th>#</th><th>Item ID</th><th>GID</th><th>Resolución</th><th>Forzar</th><th>Comentario</th></tr></thead><tbody>" +
+      "<table><thead><tr><th>#</th><th>Item ID</th><th>GID Creación</th><th>Resolución</th><th>Forzar</th><th>Comentario</th></tr></thead><tbody>" +
       rows
-        .map((r) => {
-          const gidCell = editableGid
-            ? '<input class="gid" data-gid="' + esc(rowKey(r)) + '" value="' + esc(r.gid) + '" placeholder="GID" maxlength="40">'
-            : dash(r.gid);
+        .map((r, i) => {
+          let gidCell = editable
+            ? '<input class="gid" data-gid="' + esc(rowKey(r)) + '" value="' + esc(r.gid) + '" placeholder="GID" maxlength="40">' +
+              (r.gid ? "<br>" + gidLink(r.gid) : "")
+            : r.gid ? gidLink(r.gid) : dash("");
+          if (r.created) gidCell += "<br><span class='empty'>" + (hasId(r) ? "ID " : "") + esc(r.created) + "</span>";
+          const paste = (field) =>
+            editable && hasId(r) ? '<br><button class="mini" data-act="paste-id" data-field="' + field + '" data-i="' + i + '" title="Escribir ' + esc(r.created) + ' en la grilla">Pegar ID</button>' : "";
           return (
             "<tr><td class='n'>" + r.n + "</td><td>" + esc(r.itemId) +
             (r.variationId ? "<br><span class='empty'>var " + esc(r.variationId) + "</span>" : "") +
-            "</td><td>" + gidCell + "</td><td>" + dash(r.resolution) + "</td><td>" + dash(r.force) + "</td><td>" + dash(r.comment) + "</td></tr>"
+            "</td><td>" + gidCell + "</td><td>" + dash(r.resolution) + "</td><td>" + dash(r.force) + paste("force") + "</td><td>" + dash(r.comment) + paste("comment") + "</td></tr>"
           );
         })
         .join("") +
@@ -582,13 +601,28 @@
           : '<span class="badge">No guardada todavía</span>') +
         (tracking ? '<span class="badge ok">Autoguardado activo</span>' : "") +
         (rowsNow.length && emptyRes ? '<span class="badge warn">' + emptyRes + " fila(s) sin resolución</span>" : "") +
+        (rowsNow.length && !emptyRes ? '<span class="badge ok">✔ Se puede cerrar</span>' : "") +
         "</div>";
+      if (state.review && rowsNow.length) {
+        const i = Math.min(state.review.i, rowsNow.length - 1);
+        const r = rowsNow[i];
+        current +=
+          '<div class="review"><div class="review-t">Creación ' + (i + 1) + " de " + rowsNow.length + " · " + esc(r.itemId) + "</div>" +
+          (r.gid
+            ? '<div style="margin:4px 0">GID Creación: ' + gidLink(r.gid) + "</div>"
+            : '<div style="margin:4px 0">Esta fila no tiene GID Creación. Cargalo: <input class="gid" data-gid="' + esc(rowKey(r)) + '" placeholder="GID" maxlength="40"></div>') +
+          '<div style="margin:6px 0">ID creado: <input class="gid created" data-created="' + esc(rowKey(r)) + '" value="' + esc(r.created) + '" placeholder="ID del producto" maxlength="40">' +
+          ' <button data-act="no-created" data-key="' + esc(rowKey(r)) + '">No se creó</button></div>' +
+          '<div class="row-actions"><button data-act="review-prev"' + (i ? "" : " disabled") + ">‹ Anterior</button>" +
+          '<button class="primary" data-act="review-next">' + (i < rowsNow.length - 1 ? "Siguiente ›" : "Terminar") + "</button>" +
+          '<button data-act="review-close">Cerrar</button></div></div>';
+      }
       current += rowsTable(rowsNow, true);
       if (!rowsNow.length) current += '<div class="msg bad">No encontré filas en la grilla. ¿Está cargada la tarea?</div>';
       current += '<div class="row-actions">';
-      current += '<button class="primary" data-act="save"' + (rowsNow.length ? "" : " disabled") + ">" + (saved ? "Actualizar guardado" : "Guardar y autoguardar") + "</button>";
-      if (saved) current += '<button data-act="restore"' + (state.busy ? " disabled" : "") + ">Restaurar en esta tarea</button>";
-      current += '<button data-act="refresh">Releer</button>';
+      current += '<button class="primary" data-act="save"' + (rowsNow.length ? "" : " disabled") + ">" + (saved ? "Actualizar" : "Guardar y autoguardar") + "</button>";
+      if (saved) current += '<button data-act="restore"' + (state.busy ? " disabled" : "") + ' title="Escribe en la grilla lo que tenías guardado">Pegar</button>';
+      current += '<button data-act="review"' + (rowsNow.length ? "" : " disabled") + ">Revisar creaciones</button>";
       current += "</div>";
       if (state.confirm && state.confirm.type === "save") {
         current +=
@@ -631,7 +665,7 @@
       list +=
         '<div class="entry' + (isCur ? " current" : "") + '">' +
         '<div class="entry-head"><button class="entry-title" data-act="expand" data-key="' + esc(k) + '" title="Ver filas">' +
-        (open ? "▾ " : "▸ ") + "<b>" + esc(e.id) + "</b> · " + esc(e.domain) + "<small>" + e.rows.length + "f · " + esc(short) + "</small></button>" +
+        (open ? "▾ " : "▸ ") + "<b>" + esc(e.id) + "</b> · " + esc(e.domain) + "<small>" + e.rows.length + "f · " + esc(short) + (e.rows.length && e.rows.every((r) => r.resolution) ? " · ✔ cerrable" : "") + "</small></button>" +
         '<button class="done" data-act="tick" data-key="' + esc(k) + '" title="Borrar esta tarea (pide confirmación)">✕</button></div>';
       if (confirming) {
         list +=
@@ -770,10 +804,30 @@
       const k = el.dataset.key;
       if (state.expanded.has(k)) state.expanded.delete(k);
       else state.expanded.add(k);
-    } else if (act === "refresh") {
-      readMeta();
+    } else if (act === "review") {
       state.rows = readRows(state.gids);
-      state.confirm = null;
+      state.review = { i: 0 };
+    } else if (act === "review-next") {
+      if (state.review.i >= state.rows.length - 1) state.review = null;
+      else state.review.i++;
+    } else if (act === "review-prev") {
+      state.review.i = Math.max(0, state.review.i - 1);
+    } else if (act === "review-close") {
+      state.review = null;
+    } else if (act === "no-created") {
+      await setRowField(el.dataset.key, "created", NO_CREADO);
+    } else if (act === "paste-id") {
+      const r = state.rows[Number(el.dataset.i)];
+      const pageRow = rowElements()[Number(el.dataset.i)];
+      const input = pageRow && cellOf(pageRow.el, el.dataset.field === "force" ? "force_pdp" : "comment")?.querySelector("input, textarea");
+      if (!r || !input) state.msg = { kind: "bad", html: "No encontré ese campo en la grilla." };
+      else {
+        const cur = input.value.trim();
+        const v = el.dataset.field === "comment" && cur && !cur.includes(r.created) ? cur + " " + r.created : r.created;
+        setNativeValue(input, v);
+        state.rows = readRows(state.gids);
+        state.msg = { kind: "ok", html: "Pegado " + esc(r.created) + " en " + (el.dataset.field === "force" ? "Producto a forzar" : "Comentario") + " (fila " + r.n + ")." };
+      }
     } else if (act === "save") {
       state.rows = readRows(state.gids); // siempre lo que se ve AHORA
       const prev = loadStore()[currentKey()];
@@ -837,6 +891,22 @@
     host.addEventListener(t, (ev) => ev.stopPropagation())
   );
 
+  // field: "gid" | "created". quiet=true no re-dibuja (viene de tipear).
+  async function setRowField(k, field, value, quiet) {
+    (field === "gid" ? state.gids : state.crea)[k] = value;
+    state.rows.forEach((r) => {
+      if (rowKey(r) === k) r[field] = value;
+    });
+    const saved = loadStore()[currentKey()];
+    if (saved) {
+      withDup(saved.rows).forEach((r) => {
+        if (rowKey(r) === k) r[field] = value;
+      });
+      await saveStore();
+    }
+    if (!quiet) render();
+  }
+
   shadow.addEventListener("input", (ev) => {
     const t = ev.target;
     if (!(t.matches && t.matches("[data-search]"))) return;
@@ -855,21 +925,10 @@
     if (t.matches && t.matches('[data-act="tick"]')) {
       onAction("tick", t);
     } else if (t.matches && t.matches("input.gid")) {
-      // Persistir el GID sin re-renderizar (si se re-renderizara entre el
+      // Persistir sin re-renderizar (si se re-renderizara entre el
       // mousedown y el mouseup de otro botón, se perdería ese click).
-      const k = t.dataset.gid;
-      state.gids[k] = t.value.trim();
-      state.rows.forEach((r) => {
-        if (rowKey(r) === k) r.gid = state.gids[k];
-      });
-      const saved = loadStore()[currentKey()];
-      if (saved) {
-        withDup(saved.rows);
-        saved.rows.forEach((r) => {
-          if (rowKey(r) === k) r.gid = state.gids[k];
-        });
-        await saveStore();
-      }
+      if (t.dataset.created) await setRowField(t.dataset.created, "created", t.value.trim(), true);
+      else await setRowField(t.dataset.gid, "gid", t.value.trim(), true);
     } else if (t.matches && t.matches("[data-file]")) {
       const file = t.files && t.files[0];
       if (!file) return;
@@ -895,7 +954,13 @@
 
   function hydrateGids(saved) {
     state.gids = {};
-    if (saved) withDup(saved.rows).forEach((r) => r.gid && (state.gids[rowKey(r)] = r.gid));
+    state.crea = {};
+    state.review = null;
+    if (saved)
+      withDup(saved.rows).forEach((r) => {
+        if (r.gid) state.gids[rowKey(r)] = r.gid;
+        if (r.created) state.crea[rowKey(r)] = r.created;
+      });
   }
 
   async function autosaveIfNeeded(key) {
