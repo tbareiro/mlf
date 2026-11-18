@@ -1299,7 +1299,7 @@
   const GENERIC_SHOP_WORDS =
     /\b(shop|shops|store|stores|tienda|tiendas|loja|lojas|e-?commerce|ecom|outlet|mayorista|mayoristas|atacado|atacadista|distribuidora|distribuidor|importadora|importador|imports?|exports?|mercado|market|mall|online|boutique|bazar|bazaar|comercial|comercio|ventas|vendas)\b/;
   const GENERIC_PROMO_WORDS =
-    /\b(oficial|official|oferta|ofertas|promo|promocion|liquidacion|original|premium|importado|importada|imported|marca propia|own brand|artesanal|handmade|hecho a mano|feito a mao|kit|combo|pack|set)\b/;
+    /\b(oficial|official|oferta|ofertas|promo|promocion|liquidacion|original|premium|importado|importada|imported|marca propia|own brand|artesanal|handmade|hecho a mano|feito a mao)\b/;
 
   function genericFlag(label, value) {
     const key = normalizeAttrLabel(String(label || "").replace(/\s*\([^)]*\)\s*$/, ""));
@@ -1319,9 +1319,6 @@
       const promo = v.match(GENERIC_PROMO_WORDS);
       if (promo) return { level: "yellow", text: `Trae un término de venta ("${promo[0]}"): revisá que sea ${key} real.` };
       if (v.length < 2 || /^\d+$/.test(v)) return { level: "yellow", text: `Valor muy corto o solo números: revisá que sea ${key} real.` };
-    }
-    if (key === "marca" && /\b(ltda|eireli|srl|s\.r\.l\.?|llc|inc|gmbh|s\.a\.)$/.test(v)) {
-      return { level: "yellow", text: "Parece una razón social, no una marca: revisá." };
     }
     return null;
   }
