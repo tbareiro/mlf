@@ -820,6 +820,15 @@
     const ids = new Set(saved.rows.map(rowKey));
     if (!state.rows.every((r) => ids.has(rowKey(r)))) return;
     if (JSON.stringify(saved.rows) === JSON.stringify(state.rows)) return;
+    // Si la grilla se recargó en blanco (todo vacío) pero lo guardado tenía
+    // datos, no se pisa: se vuelve a ofrecer retomar.
+    const hasData = (rows) => rows.some((r) => r.resolution || r.force || r.comment);
+    if (!hasData(state.rows) && hasData(saved.rows)) {
+      state.tracking.delete(key);
+      state.prompt = true;
+      state.open = true;
+      return;
+    }
     await persistEntry(null);
   }
 
@@ -840,6 +849,7 @@
       state.misses = 0;
       state.watchKey = key;
       state.meta = meta;
+      state.tracking.clear(); // el autoguardado vale solo mientras se está en esa tarea
       state.confirm = null;
       state.msg = null;
       const saved = key ? loadStore()[key] : null;
