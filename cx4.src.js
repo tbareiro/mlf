@@ -609,11 +609,14 @@
       '<div style="margin-top:6px">' + backupBadge(entries.length) + "</div>" +
       '<div class="row-actions">' +
       '<button data-act="download"' + (entries.length ? "" : " disabled") + ">Descargar respaldo (.json)</button>" +
-      '<button data-act="export"' + (entries.length ? "" : " disabled") + ">Copiar respaldo</button>" +
-      '<button data-act="import-file">Importar archivo</button>' +
-      '<button data-act="import">Importar pegando</button>' +
+      '<button data-act="import-file">Cargar respaldo (archivo)</button>' +
       '<input type="file" accept=".json,application/json" data-file style="display:none">' +
-      "</div></section></div>";
+      "</div>" +
+      '<details style="padding:8px 0 0"><summary>Si no te deja descargar o abrir archivos</summary>' +
+      '<div class="hint">Alternativa por portapapeles: copiás el respaldo, lo pegás en un bloc de notas, y para recuperarlo lo pegás de vuelta.</div>' +
+      '<div class="row-actions"><button data-act="export"' + (entries.length ? "" : " disabled") + ">Copiar respaldo</button>" +
+      '<button data-act="import">Pegar respaldo</button></div></details>' +
+      "</section></div>";
   }
 
   // ============================================================
