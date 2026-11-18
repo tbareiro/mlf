@@ -536,6 +536,8 @@
 
   const gidUrl = (gid) => GID_URL + encodeURIComponent(gid);
   const gidLink = (gid) => '<a href="' + esc(gidUrl(gid)) + '" target="_blank" rel="noopener" title="Abrir la creación de este GID">' + esc(gid) + " ↗</a>";
+  // Filas que se revisan: solo las que tienen GID Creación cargado.
+  const reviewIdx = (rows) => rows.map((r, i) => (r.gid ? i : -1)).filter((i) => i >= 0);
   const hasId = (r) => r.created && r.created !== NO_CREADO;
 
   function rowsTable(rows, editable) {
@@ -606,21 +608,22 @@
         (rowsNow.length && emptyRes ? '<span class="badge warn">' + emptyRes + " fila(s) sin resolución</span>" : "") +
         (rowsNow.length && !emptyRes ? '<span class="badge ok">✔ Se puede cerrar</span>' : "") +
         "</div>";
-      if (state.review && rowsNow.length) {
-        const i = Math.min(state.review.i, rowsNow.length - 1);
+      const revIdx = reviewIdx(rowsNow);
+      if (state.review && revIdx.length) {
+        const k = Math.min(state.review.i, revIdx.length - 1);
+        const i = revIdx[k];
         const r = rowsNow[i];
         current +=
-          '<div class="review"><div class="review-t">Creación ' + (i + 1) + " de " + rowsNow.length + " · " + esc(r.itemId) + "</div>" +
-          (r.gid
-            ? '<div style="margin:4px 0">GID Creación: ' + gidLink(r.gid) + "</div>"
-            : '<div style="margin:4px 0">Esta fila no tiene GID Creación. Cargalo: <input class="gid" data-gid="' + esc(rowKey(r)) + '" placeholder="GID" maxlength="40"></div>') +
+          '<div class="review"><div class="review-t">Creación ' + (k + 1) + " de " + revIdx.length + " · fila " + r.n + " · " + esc(r.itemId) + "</div>" +
+          '<div style="margin:4px 0">GID Creación: ' + gidLink(r.gid) + "</div>" +
           '<div style="margin:6px 0">ID creado: <input class="gid created" data-created="' + esc(rowKey(r)) + '" value="' + esc(r.created) + '" placeholder="ID del producto" maxlength="40">' +
           ' <button data-act="no-created" data-key="' + esc(rowKey(r)) + '">No se creó</button></div>' +
-          '<div style="margin:6px 0">Resolución: <select data-res="' + i + '"><option value="">— elegir —</option>' +
-          RESOLUTIONS.map((t) => '<option' + (normalize(t) === normalize(r.resolution) ? " selected" : "") + ">" + esc(t) + "</option>").join("") +
+          '<div style="margin:6px 0">Resolución: <select data-res="' + i + '">' +
+          (r.resolution ? "" : "<option value=\"\">— elegir —</option>") +
+          RESOLUTIONS.map((t) => "<option" + (normalize(t) === normalize(r.resolution) ? " selected" : "") + ">" + esc(t) + "</option>").join("") +
           "</select></div>" +
-          '<div class="row-actions"><button data-act="review-prev"' + (i ? "" : " disabled") + ">‹ Anterior</button>" +
-          '<button class="primary" data-act="review-next">' + (i < rowsNow.length - 1 ? "Siguiente ›" : "Terminar") + "</button>" +
+          '<div class="row-actions"><button data-act="review-prev"' + (k ? "" : " disabled") + ">‹ Anterior</button>" +
+          '<button class="primary" data-act="review-next">' + (k < revIdx.length - 1 ? "Siguiente ›" : "Terminar") + "</button>" +
           '<button data-act="review-close">Cerrar</button></div></div>';
       }
       current += rowsTable(rowsNow, true);
@@ -812,9 +815,10 @@
       else state.expanded.add(k);
     } else if (act === "review") {
       state.rows = readRows(state.gids);
-      state.review = { i: 0 };
+      if (reviewIdx(state.rows).length) state.review = { i: 0 };
+      else state.msg = { kind: "bad", html: "Ninguna fila tiene GID Creación cargado. Cargalo en la tabla y volvé a tocar Revisar creaciones." };
     } else if (act === "review-next") {
-      if (state.review.i >= state.rows.length - 1) state.review = null;
+      if (!state.review || state.review.i >= reviewIdx(state.rows).length - 1) state.review = null;
       else state.review.i++;
     } else if (act === "review-prev") {
       state.review.i = Math.max(0, state.review.i - 1);
