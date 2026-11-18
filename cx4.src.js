@@ -38,6 +38,7 @@
   const STORE_KEY = "mlf.cx4.tasks.v1";
   const BACKUP_KEY = "mlf.cx4.lastBackup";
   const BACKUP_WARN_DAYS = 7;
+  const MAX_SHOWN = 3; // tareas guardadas visibles a la vez (el resto, con el buscador)
   const POLL_MS = 1000;
 
   // ============================================================
@@ -199,7 +200,18 @@
   }
 
   const taskKey = (id, domain) => id + "|" + domain;
-  const rowKey = (r) => r.itemId + "|" + (r.variationId || "");
+  // Varias filas pueden tener el mismo Item ID + Variation ID (como en la
+  // captura con 2 filas iguales): se distinguen por su orden de aparición
+  // (r.dup = 0, 1, 2...) para que cada fila tenga su propio GID.
+  const rowKey = (r) => r.itemId + "|" + (r.variationId || "") + "|" + (r.dup || 0);
+  function withDup(rows) {
+    const seen = {};
+    rows.forEach((r) => {
+      const b = r.itemId + "|" + (r.variationId || "");
+      r.dup = seen[b] = (seen[b] === undefined ? 0 : seen[b] + 1);
+    });
+    return rows;
+  }
 
   // ============================================================
   // Lectura de la página
@@ -250,7 +262,7 @@
   // El GID no está en la página: se escribe a mano en el panel y se
   // conserva en state.gids (por Item ID + Variation ID).
   function readRows(gids) {
-    return rowElements().map((r, i) => {
+    const out = rowElements().map((r, i) => {
       const txt = (p) => {
         const c = cellOf(r.el, p);
         return c ? c.textContent.trim() : "";
@@ -269,9 +281,13 @@
         force: inp("force_pdp"),
         comment: inp("comment"),
       };
-      row.gid = (gids && gids[rowKey(row)]) || "";
       return row;
     });
+    withDup(out);
+    out.forEach((row) => {
+      row.gid = (gids && gids[rowKey(row)]) || "";
+    });
+    return out;
   }
 
   // ============================================================
@@ -447,7 +463,9 @@
     .prompt { padding: 12px 14px; background: #3d2f10; border-bottom: 1px solid #6b5316; color: #fbe3a6; }
     .prompt b { color: #fff; }
     .confirm { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #3a1a17; border: 1px solid #7a2b24; }
-    .list { max-height: 170px; overflow-y: auto; border: 1px solid #2a2a31; border-radius: 8px; background: #1c1c21; }
+    input.search { width: 100%; box-sizing: border-box; margin-bottom: 6px; background: #0f0f12; color: #ececf0; border: 1px solid #3b3b45; border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 12px; }
+    input.search:focus { outline: 1px solid #3483fa; }
+    .list { max-height: 260px; overflow-y: auto; border: 1px solid #2a2a31; border-radius: 8px; background: #1c1c21; }
     .entry { border-bottom: 1px solid #25252c; }
     .entry:last-child { border-bottom: none; }
     .entry.current { box-shadow: inset 3px 0 0 #3483fa; }
@@ -481,6 +499,7 @@
     busy: false,
     settings: false, // engranaje: respaldos
     expanded: new Set(), // tareas guardadas con el detalle abierto
+    search: "", // filtro de la lista de guardadas
     watchKey: "",
     misses: 0,
   };
@@ -594,8 +613,16 @@
     // Lista comprimida: una línea por tarea. Clic en el texto = ver filas;
     // botón ✓ = marcar como hecha (pide confirmación antes de borrar).
     let list = "";
+    const q = state.search.trim().toLowerCase();
+    const matches = q
+      ? entries.filter(([, e]) =>
+          (e.id + " " + e.domain + " " + e.rows.map((r) => r.itemId + " " + (r.gid || "")).join(" ")).toLowerCase().includes(q)
+        )
+      : entries;
+    const shown = matches.slice(0, MAX_SHOWN);
     if (!entries.length) list = '<div class="none" style="padding:6px 8px">Todavía no guardaste ninguna tarea.</div>';
-    for (const [k, e] of entries) {
+    else if (!matches.length) list = '<div class="none" style="padding:6px 8px">Sin resultados.</div>';
+    for (const [k, e] of shown) {
       const isCur = k === key;
       const confirming = state.confirm && state.confirm.type === "del" && state.confirm.key === k;
       const open = state.expanded.has(k);
@@ -605,14 +632,17 @@
         '<div class="entry' + (isCur ? " current" : "") + '">' +
         '<div class="entry-head"><button class="entry-title" data-act="expand" data-key="' + esc(k) + '" title="Ver filas">' +
         (open ? "▾ " : "▸ ") + "<b>" + esc(e.id) + "</b> · " + esc(e.domain) + "<small>" + e.rows.length + "f · " + esc(short) + "</small></button>" +
-        '<button class="done" data-act="tick" data-key="' + esc(k) + '" title="Marcar como hecha (borra)">✓</button></div>';
+        '<button class="done" data-act="tick" data-key="' + esc(k) + '" title="Borrar esta tarea (pide confirmación)">✕</button></div>';
       if (confirming) {
         list +=
-          '<div class="confirm mini">¿Hecha? Se <b>borra</b> la ' + esc(e.id) + " y no se puede deshacer." +
+          '<div class="confirm mini">¿Borrar la ' + esc(e.id) + "? No se puede deshacer." +
           '<button class="danger" data-act="del-yes" data-key="' + esc(k) + '">Sí, borrar</button><button data-act="cancel">No</button></div>';
       }
       if (open) list += '<div class="entry-body">' + rowsTable(e.rows, false) + "</div>";
       list += "</div>";
+    }
+    if (matches.length > shown.length) {
+      list += '<div class="none" style="padding:4px 8px">+' + (matches.length - shown.length) + " más: usá el buscador.</div>";
     }
 
     const overdue = entries.length && (!lastBackupAt || Date.now() - lastBackupAt >= BACKUP_WARN_DAYS * 86400000);
@@ -639,7 +669,11 @@
       promptHtml +
       settingsHtml +
       "<section><h2>Esta tarea</h2>" + current + "</section>" +
-      "<section><h2>Guardadas (" + entries.length + ")</h2><div class=\"list\">" + list + "</div></section></div>";
+      "<section><h2>Guardadas (" + entries.length + ")</h2>" +
+      (entries.length > MAX_SHOWN || q
+        ? '<input class="search" data-search placeholder="Buscar por tarea, dominio, Item ID o GID" value="' + esc(state.search) + '">'
+        : "") +
+      '<div class="list">' + list + "</div></section></div>";
   }
 
   // ============================================================
@@ -803,6 +837,19 @@
     host.addEventListener(t, (ev) => ev.stopPropagation())
   );
 
+  shadow.addEventListener("input", (ev) => {
+    const t = ev.target;
+    if (!(t.matches && t.matches("[data-search]"))) return;
+    state.search = t.value;
+    const pos = t.selectionStart;
+    render();
+    const n = shadow.querySelector("[data-search]");
+    if (n) {
+      n.focus();
+      try { n.setSelectionRange(pos, pos); } catch (e) {}
+    }
+  });
+
   shadow.addEventListener("change", async (ev) => {
     const t = ev.target;
     if (t.matches && t.matches('[data-act="tick"]')) {
@@ -817,6 +864,7 @@
       });
       const saved = loadStore()[currentKey()];
       if (saved) {
+        withDup(saved.rows);
         saved.rows.forEach((r) => {
           if (rowKey(r) === k) r.gid = state.gids[k];
         });
@@ -847,7 +895,7 @@
 
   function hydrateGids(saved) {
     state.gids = {};
-    if (saved) saved.rows.forEach((r) => r.gid && (state.gids[rowKey(r)] = r.gid));
+    if (saved) withDup(saved.rows).forEach((r) => r.gid && (state.gids[rowKey(r)] = r.gid));
   }
 
   async function autosaveIfNeeded(key) {
@@ -856,7 +904,7 @@
     // Solo si es la misma tarea completa (mismas filas): nunca autoguardar
     // una grilla a medio cargar.
     if (saved.rows.length !== state.rows.length) return;
-    const ids = new Set(saved.rows.map(rowKey));
+    const ids = new Set(withDup(saved.rows).map(rowKey));
     if (!state.rows.every((r) => ids.has(rowKey(r)))) return;
     if (JSON.stringify(saved.rows) === JSON.stringify(state.rows)) return;
     // Si la grilla se recargó en blanco (todo vacío) pero lo guardado tenía
