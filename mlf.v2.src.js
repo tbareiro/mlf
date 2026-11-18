@@ -1323,6 +1323,70 @@
     return null;
   }
 
+  // Título y Descripción: avisa de texto que no es del producto (condición
+  // nuevo/usado, datos de contacto, horarios, direcciones, envíos...).
+  // Rojo = dato que no debe estar; amarillo = puede ser, revisar. Solo avisa.
+  const CONTENT_RULES = [
+    { level: "red", text: "Mail", re: /[a-z0-9._%+-]+@[a-z0-9-]+\.[a-z.]{2,}/ },
+    { level: "red", text: "Web o enlace", re: /(https?:\/\/\S+|www\.\S+|\b[a-z0-9-]{2,}\.(?:com|net|org|shop|store|ar|br|mx|cl|uy)\b)/ },
+    { level: "red", text: "Red social o contacto", re: /(?:^|\s)@[a-z0-9_.]{3,}|\b(?:instagram|facebook|tiktok|whatsapp|wsp|wpp|telegram)\b/ },
+    { level: "red", text: "Teléfono", re: /(?:\+?\d{1,3}[\s.-])?\(?\d{2,4}\)?[\s.-]\d{3,4}[\s.-]\d{3,4}\b/ },
+    {
+      level: "red", text: "Datos de contacto",
+      re: /\b(?:telefono|celular|llamar|llamanos|llamenos|contactanos|contactenos|escribinos|escribenos|consultas? (?:al|por))\b/,
+    },
+    {
+      level: "red", text: "Horarios",
+      re: /\b(?:horarios?|atencion al cliente|atendemos|atendimento|abierto|abrimos|funcionamos|(?:lunes|martes|miercoles|jueves|viernes|sabados?|domingos?)\s+(?:a|al|y|de)\s+(?:lunes|martes|miercoles|jueves|viernes|sabados?|domingos?|\d{1,2})|\d{1,2}(?::\d{2})?\s?(?:hs|hrs|am|pm))\b/,
+    },
+    {
+      level: "red", text: "Dirección o lugar",
+      re: /\bdireccion:|\b(?:nuestra direccion|ubicados en|ubicamos en|nos encontramos en|sucursal(?:es)?|showroom|casa central|retiros? (?:en|por|personal|gratis)|retirar en|retira en|punto de retiro|(?:calle|avenida|av\.?|ruta|pasaje|boulevard|rua)\s+[a-z0-9 ]{2,25}\s\d{2,5})\b/,
+    },
+    {
+      level: "red", text: "Condición del producto (nuevo/usado)",
+      re: /\b(?:usad[oa]s?|seminuev[oa]s?|semi nuev[oa]s?|reacondicionad[oa]s?|refurbished|open box|brand new|a estrenar|sin uso|poco uso|como nuev[oa]|producto nuev[oa]|articulo nuev[oa]|nuev[oa]s? en caja|nuev[oa]s? sellad[oa]s?|100% nuev[oa]|segunda mano|second hand)\b/,
+    },
+    { level: "yellow", text: "Menciona nuevo/new", re: /\b(?:nuev[oa]s?|new|nov[oa]s?)\b/ },
+    { level: "yellow", text: "Original o autenticidad", re: /\b(?:original(?:es)?|autentic[oa]s?|genuin[oa]s?)\b/ },
+    {
+      level: "yellow", text: "Envíos o entrega",
+      re: /\b(?:envios?|enviamos|despachamos|despacho|delivery|mercado ?envios|flete|andreani|entrega inmediata|entregas? a domicilio)\b/,
+    },
+    { level: "yellow", text: "Garantía", re: /\b(?:garantia|garantizad[oa]|warranty)\b/ },
+    {
+      level: "yellow", text: "Texto comercial",
+      re: /\b(?:precios?|ofertas?|promo|promocion|descuentos?|cuotas|sin interes|stock|consultar|consulte|mayoristas?|pedidos|liquidacion|ultimas unidades)\b|\$\s?\d|u\$s|\busd\b/,
+    },
+    {
+      level: "yellow", text: "Menciona un lugar",
+      re: /\b(?:buenos aires|caba|capital federal|cordoba|rosario|mendoza|la plata|mar del plata|tucuman|salta|neuquen|bahia blanca|montevideo|sao paulo|rio de janeiro|santiago de chile|bogota)\b/,
+    },
+  ];
+
+  function contentFlags(label, value) {
+    const key = normalizeAttrLabel(String(label || "").replace(/\s*\([^)]*\)\s*$/, ""));
+    if (key !== "titulo" && key !== "descripcion") return [];
+    const v = normalizeAttrLabel(value);
+    if (!v) return [];
+    const flags = [];
+    CONTENT_RULES.forEach((rule) => {
+      const m = v.match(rule.re);
+      if (!m) return;
+      const shown = m[0].trim().slice(0, 40);
+      flags.push({ level: rule.level, text: `${rule.text}: "${shown}"` });
+    });
+    // Si ya salió "condición" en rojo, el "nuevo" suelto en amarillo sobra.
+    const hasCondition = flags.some((f) => f.level === "red" && f.text.startsWith("Condición"));
+    const out = flags.filter((f) => !(hasCondition && f.text.startsWith("Menciona nuevo")));
+    return out.sort((a, b) => (a.level === b.level ? 0 : a.level === "red" ? -1 : 1)).slice(0, 6);
+  }
+
+  function fieldFlags(label, value) {
+    const generic = genericFlag(label, value);
+    return generic ? [generic] : contentFlags(label, value);
+  }
+
   function genericBadge(flag) {
     const el = document.createElement("div");
     el.style.cssText =
@@ -1428,8 +1492,7 @@
       const genericHolder = document.createElement("div");
       const refreshGeneric = () => {
         genericHolder.textContent = "";
-        const flag = genericFlag(attr.label, valueEl.textContent);
-        if (flag) genericHolder.appendChild(genericBadge(flag));
+        fieldFlags(attr.label, valueEl.textContent).forEach((flag) => genericHolder.appendChild(genericBadge(flag)));
       };
       refreshGeneric();
       valueEl.addEventListener("input", refreshGeneric);
@@ -1667,9 +1730,9 @@
   // así lo que no se pudo pegar queda a mano. Lo que falló va arriba y el
   // cuadro se abre solo; si todo salió bien queda en una línea.
   function showPasteSummary({ rows = [], parts = [], detailLines = [], failedUrls = [] }) {
-    rows.forEach((row) => (row.generic = genericFlag(row.label, row.value)));
-    const problems = rows.filter((row) => row.warning || row.generic);
-    const okRows = rows.filter((row) => !row.warning && !row.generic);
+    rows.forEach((row) => (row.generic = fieldFlags(row.label, row.value)));
+    const problems = rows.filter((row) => row.warning || row.generic.length);
+    const okRows = rows.filter((row) => !row.warning && !row.generic.length);
     const toReview = problems.length + failedUrls.length;
 
     const box = document.createElement("div");
@@ -1717,7 +1780,7 @@
         warn.textContent = "⚠ " + row.warning;
         text.appendChild(warn);
       }
-      if (row.generic) text.appendChild(genericBadge(row.generic));
+      row.generic.forEach((flag) => text.appendChild(genericBadge(flag)));
       item.append(text, makeCopyButton(() => row.value || "", "Copiar"));
       detail.appendChild(item);
     };
@@ -2492,9 +2555,9 @@
   function showFallasSummary({ rows, others, photoLines, photoWarnings, bullets = [] }) {
     const changed = rows.filter((row) => row.changed).length;
     const alreadySet = rows.filter((row) => row.alreadySet).length;
-    rows.forEach((row) => (row.generic = genericFlag(row.label, row.newValue)));
+    rows.forEach((row) => (row.generic = fieldFlags(row.label, row.newValue)));
     const toReview =
-      rows.filter((row) => row.warning || row.generic).length + others.length + photoWarnings.length;
+      rows.filter((row) => row.warning || row.generic.length).length + others.length + photoWarnings.length;
 
     const box = document.createElement("div");
     box.id = "mlf-bk-summary";
@@ -2580,7 +2643,7 @@
         "color:#374151;word-break:break-word"
       );
       if (row.warning) addLine(item, "⚠ " + row.warning, WARNING_STYLE);
-      if (row.generic) item.appendChild(genericBadge(row.generic));
+      row.generic.forEach((flag) => item.appendChild(genericBadge(flag)));
       if (row.copyValue) {
         const copyRow = document.createElement("div");
         copyRow.style.cssText = "margin-top:4px";
