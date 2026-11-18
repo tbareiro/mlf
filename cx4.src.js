@@ -836,6 +836,8 @@
         const v = el.dataset.field === "comment" && cur && !cur.includes(r.created) ? cur + " " + r.created : r.created;
         setNativeValue(input, v);
         state.rows = readRows(state.gids);
+        const tk = currentKey();
+        if (state.tracking.has(tk)) await autosaveIfNeeded(tk); // que el valor pegado quede guardado
         state.msg = { kind: "ok", html: "Pegado " + esc(r.created) + " en " + (el.dataset.field === "force" ? "Producto a forzar" : "Comentario") + " (fila " + r.n + ")." };
       }
     } else if (act === "save") {
