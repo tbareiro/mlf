@@ -18,6 +18,7 @@ const PAIRS = [
   ["pegar.comparator.src.js", "pegar.comparator.min.js", "pegar.comparator.url.txt", "pegar.comparator.url.js", "MLF_PEGAR_COMPARATOR_HREF"],
   ["copiar.fotos.src.js", "copiar.fotos.min.js", "copiar.fotos.url.txt", "copiar.fotos.url.js", "MLF_COPIAR_FOTOS_HREF"],
   ["pegar.fotos.src.js", "pegar.fotos.min.js", "pegar.fotos.url.txt", "pegar.fotos.url.js", "MLF_PEGAR_FOTOS_HREF"],
+  ["cx4.src.js", "cx4.min.js", "cx4.url.txt", "cx4.url.js", "MLF_CX4_HREF"],
   ["mlf.v2.src.js", "mlf.v2.min.js", "mlf.v2.url.txt", "mlf.v2.url.js", "MLF_V2_HREF"],
 ];
 

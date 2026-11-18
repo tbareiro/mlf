@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Fixture Cx4</title>
+<style>
+body{background:#111;color:#ddd;font-family:sans-serif;padding:20px}
+.andes-popper{position:fixed;left:200px;top:260px;background:#222;border:1px solid #555;max-height:200px;overflow-y:auto}
+.andes-list{list-style:none;margin:0;padding:0}
+.andes-list__item{padding:6px 12px;cursor:pointer}
+.row{display:flex;gap:10px;margin:6px 0;align-items:center}
+</style>
+</head><body>
+<p>Fixture que imita la tarea real. Simula react-aria: el desplegable abre y selecciona con <b>pointerup</b>, ignorando "click" suelto.</p>
+<button id="next1">Ir a tarea 2 (SPA)</button> <button id="next0">Volver a tarea 1 (SPA)</button>
+<hr>
+<div id="app"></div>
+<script>
+const OPTS = [["optin_same_pdp","Optin a misma PDP"],["optin_other_pdp","Optin a otra PDP"],["generic_product","Producto generico"],["pdp_indefinided","PDP Indefinida"],["item_indefinided","Item Indefinido"],["not_find_gtin","No se encontro GTIN"],["not_variation_stock","Variante sin stock"],["pain_apd","Pain APD"],["not_info_childs","Sin info Childs"],["desestimar","Desestimar - Otros motivos"]];
+const TASKS = [
+  {id:"19374519", domain:"ELLIPTICALS", items:["MCO2179134253","MCO2179134999","MCO2179135000"]},
+  {id:"20000001", domain:"TREADMILLS", items:["MCO1111111111"]},
+];
+const app = document.getElementById("app");
+function openMenu(rid, trig){
+  document.querySelectorAll(".andes-popper").forEach(e=>e.remove());
+  const pop = document.createElement("div"); pop.className="andes-popper"; pop.id = rid+"-menu-popper";
+  pop.innerHTML = `<ul class="andes-list" id="${rid}-menu-list" role="listbox">` + OPTS.map(([k,t])=>
+    `<li class="andes-list__item" id="${rid}-menu-list-option-${k}" role="option" aria-selected="false" data-key="${k}"><div><div><span class="andes-list__item-primary">${t}</span></div></div></li>`).join("") + "</ul>";
+  document.body.appendChild(pop);
+  pop.querySelectorAll("li").forEach(li=>{
+    li.addEventListener("pointerup", ()=>{ trig.querySelector("[data-testid=dropdown-trigger]").textContent = li.querySelector(".andes-list__item-primary").textContent; pop.remove(); });
+  });
+}
+function load(t){
+  document.querySelectorAll(".andes-popper").forEach(e=>e.remove());
+  app.innerHTML = `
+  <p id="task-identifier" class="task-identifier" data-testid="task-identifier">Identificador: <!-- -->${t.id}<button class="copy-icon-wrapper" type="button">c</button></p>
+  <ul><li class="andes-list__item" data-andes-list-item="true"><div><span class="andes-list__item-primary" data-andes-list-title="true">Dominio</span></div><div><span class="task-context__value">${t.domain}</span></div></li></ul>
+  <div id="table-group-table"><div class="backoffice-body" id="body"></div></div>`;
+  const body = document.getElementById("body");
+  t.items.forEach((it,i)=>{
+    const rid = "_r_"+t.id+"_"+i+"_";
+    const row = document.createElement("div"); row.className="row"; row.setAttribute("data-testid","backoffice-row-"+i);
+    row.innerHTML = `
+     <div data-testid="backoffice-cell-item_id-0-${i}_item_id-0"><span>${it}</span></div>
+     <div data-testid="backoffice-cell-variation_id-1-${i}_variation_id-1"><span></span></div>
+     <div data-testid="backoffice-cell-comparator_link-${i}_comparator_link"><a href="#">cmp</a></div>
+     <div data-testid="backoffice-cell-resolution-8-${i}_resolution-8"><div class="andes-dropdown"><button class="andes-dropdown__trigger" id="${rid}-trigger" type="button" role="combobox" aria-expanded="false"><span class="andes-dropdown__display-values"><span data-testid="dropdown-trigger">Seleccionar</span></span></button></div></div>
+     <div data-testid="backoffice-cell-force_pdp-${i}_force_pdp"><input value="" aria-label="Editar valor"></div>
+     <div data-testid="backoffice-cell-comment-${i}_comment"><input value="" aria-label="Editar valor"></div>`;
+    body.appendChild(row);
+    const trig = row.querySelector("button");
+    trig.addEventListener("pointerup", ()=>openMenu(rid, trig));
+  });
+}
+load(TASKS[0]);
+document.getElementById("next1").onclick=()=>load(TASKS[1]);
+document.getElementById("next0").onclick=()=>load(TASKS[0]);
+</script></body></html>
