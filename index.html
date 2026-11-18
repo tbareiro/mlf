@@ -188,6 +188,12 @@
     margin-top:12px;
   }
 
+  .howto{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--mute);margin-top:12px;line-height:1.55}
+  .howto h3{font-size:12px;margin:14px 0 6px;text-transform:uppercase;letter-spacing:.06em}
+  .howto ol{margin:0;padding-left:20px}
+  .howto li{margin-bottom:6px}
+  .howto p{margin:0}
+
   /* --- copiar -> pegar flow diagram --- */
   .flow{
     display:flex;
@@ -461,7 +467,22 @@
         </div>
       </div>
     </div>
-    <p class="drag-hint"><b>Cx4 alpha · versión de prueba.</b> Para tareas de comparación que hay que postergar: arrastrá este botón a tu barra de favoritos y tocalo parado en la tarjeta de la tarea. Guarda Identificador + Dominio y, por fila, Item ID, GID (se escribe a mano), Resolución, Producto a forzar y Comentario, en este navegador y sin vencimiento. Al volver a una tarea guardada avisa y te deja retomarla; el tick de la lista borra la tarea hecha, pidiendo confirmación. Hacé un respaldo (.json) de vez en cuando: si se borran los datos del navegador, se pierde lo guardado.</p>
+    <p class="drag-hint"><b>Cx4 alpha · versión de prueba.</b> Es un anotador para las tareas de comparación (item vs. producto de catálogo) que hay que postergar: guarda lo que ya resolviste para retomarlo después, aunque sea el mes que viene. Arrastrá el botón a tu barra de favoritos (Ctrl+Shift+B si no la tenés visible).</p>
+    <div class="howto">
+      <h3>Cómo se usa</h3>
+      <ol>
+        <li><b>Abrí la tarea</b> y tocá el botón Cx4 en favoritos. Aparece un panel arriba a la derecha (se minimiza con – y se cierra con ×). Hay que tocarlo una vez cada vez que se carga la página de nuevo; después se queda vigilando solo.</li>
+        <li><b>Guardá:</b> con <i>Guardar y autoguardar</i> se anota la tarea (Identificador + Dominio) y, por fila, Item ID, Resolución, Producto a forzar y Comentario. Desde ahí se autoguarda cada cambio. En cada fila podés escribir el <b>GID Creación</b>, que no figura en la grilla.</li>
+        <li><b>Volvé más tarde:</b> al abrir una tarea guardada, Cx4 avisa y pregunta si querés retomarla. <i>Retomar</i> (o el botón <i>Pegar</i>) escribe en la grilla lo guardado; las filas se reconocen por Item ID + Variation ID, no por posición.</li>
+        <li><b>Revisar creaciones:</b> recorre una por una las filas que tienen GID Creación. Cada paso muestra el link del GID (abre en otra pestaña), un campo <i>ID creado</i> (o <i>No se creó</i>) y la <i>Resolución</i>, que se puede cambiar ahí mismo (por ejemplo a <i>Optin a otra PDP</i>). Cx4 no valida el ID: lo anota quien revisa.</li>
+        <li><b>Pegar el ID:</b> con el ícono de pegar, debajo de <i>Forzar</i> o de <i>Comentario</i>, el ID creado se escribe en esa columna de la grilla.</li>
+        <li><b>Cerrar:</b> cuando todas las filas tienen resolución aparece <i>✔ Se puede cerrar</i>. En <i>Guardadas</i> el filtro <i>Cerrables</i> muestra solo esas tareas.</li>
+      </ol>
+      <h3>La lista de guardadas</h3>
+      <p>No tiene límite de tareas; muestra las 3 más recientes y el resto se encuentra con el buscador (por tarea, dominio, Item ID o GID). El ícono de copiar, al lado del número de tarea, copia el identificador. La ✕ borra una tarea hecha, pidiendo confirmación antes.</p>
+      <h3>Datos y respaldo</h3>
+      <p>Lo guardado vive solo en este navegador y no vence, pero si se borran los datos del navegador se pierde. En el engranaje ⚙ del panel está el respaldo: descargar o copiar un archivo .json y volver a cargarlo (no pisa las tareas que ya tenés). Un puntito amarillo en el engranaje avisa si pasó una semana sin respaldo.</p>
+    </div>
   </section>
 
   <section>
