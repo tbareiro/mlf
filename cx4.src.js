@@ -447,13 +447,21 @@
     .prompt { padding: 12px 14px; background: #3d2f10; border-bottom: 1px solid #6b5316; color: #fbe3a6; }
     .prompt b { color: #fff; }
     .confirm { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: #3a1a17; border: 1px solid #7a2b24; }
-    .entry { border: 1px solid #2a2a31; border-radius: 8px; margin-bottom: 8px; background: #1c1c21; }
-    .entry.current { border-color: #3483fa; }
-    .entry-head { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
-    .entry-head input[type=checkbox] { width: 17px; height: 17px; cursor: pointer; accent-color: #c0392b; }
-    .entry-title { flex: 1; min-width: 0; }
-    .entry-title b { display: block; }
-    .entry-title span { color: #8b8b96; font-size: 12px; }
+    .list { max-height: 170px; overflow-y: auto; border: 1px solid #2a2a31; border-radius: 8px; background: #1c1c21; }
+    .entry { border-bottom: 1px solid #25252c; }
+    .entry:last-child { border-bottom: none; }
+    .entry.current { box-shadow: inset 3px 0 0 #3483fa; }
+    .entry-head { display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; font-size: 12px; }
+    .entry-title { flex: 1; min-width: 0; text-align: left; background: transparent; border: none; padding: 4px 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ececf0; }
+    .entry-title:hover { background: transparent; color: #fff; }
+    .entry-title small { color: #8b8b96; margin-left: 6px; }
+    button.done { padding: 1px 8px; font-size: 13px; line-height: 1.3; color: #8b8b96; }
+    button.done:hover { background: #c0392b; border-color: #c0392b; color: #fff; }
+    .entry-body { padding: 0 8px 6px; }
+    .confirm.mini { margin: 2px 6px 6px; padding: 5px 8px; font-size: 12px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .confirm.mini button { padding: 2px 9px; font-size: 12px; }
+    .gear-dot { color: #f2c14e; }
     details { padding: 0 10px 8px; }
     summary { cursor: pointer; color: #8b8b96; font-size: 12px; margin-bottom: 6px; }
     .none { color: #6d6d78; padding: 4px 0; }
@@ -471,6 +479,8 @@
     msg: null, // { kind: "ok"|"bad", html }
     confirm: null, // { type: "del"|"save", key }
     busy: false,
+    settings: false, // engranaje: respaldos
+    expanded: new Set(), // tareas guardadas con el detalle abierto
     watchKey: "",
     misses: 0,
   };
@@ -581,42 +591,55 @@
         '<div class="row-actions"><button class="primary" data-act="resume"' + (state.busy ? " disabled" : "") + ">" + (state.busy ? "Cargando…" : "Retomar") + '</button><button data-act="dismiss-prompt">Ahora no</button></div></div>';
     }
 
+    // Lista comprimida: una línea por tarea. Clic en el texto = ver filas;
+    // botón ✓ = marcar como hecha (pide confirmación antes de borrar).
     let list = "";
-    if (!entries.length) list = '<div class="none">Todavía no guardaste ninguna tarea.</div>';
+    if (!entries.length) list = '<div class="none" style="padding:6px 8px">Todavía no guardaste ninguna tarea.</div>';
     for (const [k, e] of entries) {
       const isCur = k === key;
       const confirming = state.confirm && state.confirm.type === "del" && state.confirm.key === k;
+      const open = state.expanded.has(k);
+      const d = new Date(e.savedAt);
+      const short = isNaN(d) ? "" : d.getDate() + "/" + (d.getMonth() + 1);
       list +=
         '<div class="entry' + (isCur ? " current" : "") + '">' +
-        '<div class="entry-head"><input type="checkbox" data-act="tick" data-key="' + esc(k) + '"' + (confirming ? " checked" : "") + ' title="Marcar como hecha (borra)">' +
-        '<div class="entry-title"><b>' + esc(e.id) + " · " + esc(e.domain) + "</b><span>" + e.rows.length + " fila(s) · " + esc(fmtDate(e.savedAt)) + (isCur ? " · esta tarea" : "") + "</span></div>" +
-        "</div>";
+        '<div class="entry-head"><button class="entry-title" data-act="expand" data-key="' + esc(k) + '" title="Ver filas">' +
+        (open ? "▾ " : "▸ ") + "<b>" + esc(e.id) + "</b> · " + esc(e.domain) + "<small>" + e.rows.length + "f · " + esc(short) + "</small></button>" +
+        '<button class="done" data-act="tick" data-key="' + esc(k) + '" title="Marcar como hecha (borra)">✓</button></div>';
       if (confirming) {
         list +=
-          '<div class="confirm" style="margin:0 10px 8px">¿Marcar como hecha y <b>borrar</b> la tarea ' + esc(e.id) + " · " + esc(e.domain) + "? No se puede deshacer." +
-          '<div class="row-actions"><button class="danger" data-act="del-yes" data-key="' + esc(k) + '">Sí, borrar</button><button data-act="cancel">Cancelar</button></div></div>';
+          '<div class="confirm mini">¿Hecha? Se <b>borra</b> la ' + esc(e.id) + " y no se puede deshacer." +
+          '<button class="danger" data-act="del-yes" data-key="' + esc(k) + '">Sí, borrar</button><button data-act="cancel">No</button></div>';
       }
-      list += "<details><summary>Ver filas</summary>" + rowsTable(e.rows, false) + "</details></div>";
+      if (open) list += '<div class="entry-body">' + rowsTable(e.rows, false) + "</div>";
+      list += "</div>";
     }
+
+    const overdue = entries.length && (!lastBackupAt || Date.now() - lastBackupAt >= BACKUP_WARN_DAYS * 86400000);
+    const settingsHtml = state.settings
+      ? "<section><h2>Respaldos</h2>" +
+        '<div class="hint" style="margin:0 0 6px">Lo guardado vive solo en este navegador: si se borran sus datos, se pierde. Un respaldo es una copia para recuperarlo.</div>' +
+        backupBadge(entries.length) +
+        '<div class="row-actions">' +
+        '<button data-act="download"' + (entries.length ? "" : " disabled") + ">Descargar respaldo (.json)</button>" +
+        '<button data-act="import-file">Cargar respaldo (archivo)</button>' +
+        '<input type="file" accept=".json,application/json" data-file style="display:none">' +
+        "</div>" +
+        '<div class="hint" style="margin-top:10px">Si no te deja descargar o abrir archivos, por portapapeles:</div>' +
+        '<div class="row-actions" style="margin-top:4px"><button data-act="export"' + (entries.length ? "" : " disabled") + ">Copiar respaldo</button>" +
+        '<button data-act="import">Pegar respaldo</button></div></section>'
+      : "";
 
     shadow.innerHTML =
       "<style>" + CSS + "</style>" +
       '<div class="panel">' +
-      '<header><h1>Cx4<small>tareas postergadas</small></h1><button class="ghost" data-act="toggle" title="Minimizar">–</button><button class="ghost" data-act="close" title="Cerrar del todo (deja de vigilar)">×</button></header>' +
+      '<header><h1>Cx4<small>tareas postergadas</small></h1>' +
+      '<button class="ghost" data-act="settings" title="Configuración y respaldos' + (overdue ? " (hace falta un respaldo)" : "") + '">⚙' + (overdue ? '<span class="gear-dot">•</span>' : "") + "</button>" +
+      '<button class="ghost" data-act="toggle" title="Minimizar">–</button><button class="ghost" data-act="close" title="Cerrar del todo (deja de vigilar)">×</button></header>' +
       promptHtml +
+      settingsHtml +
       "<section><h2>Esta tarea</h2>" + current + "</section>" +
-      "<section><h2>Guardadas (" + entries.length + ")</h2>" + list +
-      '<div style="margin-top:6px">' + backupBadge(entries.length) + "</div>" +
-      '<div class="row-actions">' +
-      '<button data-act="download"' + (entries.length ? "" : " disabled") + ">Descargar respaldo (.json)</button>" +
-      '<button data-act="import-file">Cargar respaldo (archivo)</button>' +
-      '<input type="file" accept=".json,application/json" data-file style="display:none">' +
-      "</div>" +
-      '<details style="padding:8px 0 0"><summary>Si no te deja descargar o abrir archivos</summary>' +
-      '<div class="hint">Alternativa por portapapeles: copiás el respaldo, lo pegás en un bloc de notas, y para recuperarlo lo pegás de vuelta.</div>' +
-      '<div class="row-actions"><button data-act="export"' + (entries.length ? "" : " disabled") + ">Copiar respaldo</button>" +
-      '<button data-act="import">Pegar respaldo</button></div></details>' +
-      "</section></div>";
+      "<section><h2>Guardadas (" + entries.length + ")</h2><div class=\"list\">" + list + "</div></section></div>";
   }
 
   // ============================================================
@@ -707,6 +730,12 @@
     }
     if (act === "toggle") {
       state.open = !state.open;
+    } else if (act === "settings") {
+      state.settings = !state.settings;
+    } else if (act === "expand") {
+      const k = el.dataset.key;
+      if (state.expanded.has(k)) state.expanded.delete(k);
+      else state.expanded.add(k);
     } else if (act === "refresh") {
       readMeta();
       state.rows = readRows(state.gids);
@@ -722,7 +751,8 @@
       state.confirm = null;
     } else if (act === "tick") {
       // El tick solo abre la confirmación; recién "Sí, borrar" borra.
-      state.confirm = el.checked ? { type: "del", key: el.dataset.key } : null;
+      const same = state.confirm && state.confirm.type === "del" && state.confirm.key === el.dataset.key;
+      state.confirm = same ? null : { type: "del", key: el.dataset.key };
     } else if (act === "del-yes") {
       delete loadStore()[el.dataset.key];
       state.tracking.delete(el.dataset.key);
@@ -763,9 +793,15 @@
 
   shadow.addEventListener("click", (ev) => {
     const el = ev.target.closest("[data-act]");
-    if (!el || el.dataset.act === "tick") return;
+    if (!el) return;
     onAction(el.dataset.act, el);
   });
+
+  // Que la página (modales, "click afuera", trampas de foco) no vea ni
+  // se coma los eventos hechos dentro del panel.
+  ["click", "mousedown", "mouseup", "pointerdown", "pointerup", "keydown", "keyup", "focusin"].forEach((t) =>
+    host.addEventListener(t, (ev) => ev.stopPropagation())
+  );
 
   shadow.addEventListener("change", async (ev) => {
     const t = ev.target;
