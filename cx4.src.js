@@ -41,6 +41,8 @@
   const MAX_SHOWN = 3; // tareas guardadas visibles a la vez (el resto, con el buscador)
   const GID_URL = "https://catalog-domains.adminml.com/catalogo/bc-admin/crear-productos/";
   const NO_CREADO = "No se creó";
+  const PASTE_ICON =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="3" width="11" height="14" rx="2.5"/><path d="M6.5 8C5.5 8.6 5 9.6 5 10.8V18a3 3 0 0 0 3 3h6.5c1.2 0 2.2-.6 2.8-1.6"/></svg>';
   const POLL_MS = 1000;
 
   // ============================================================
@@ -485,7 +487,7 @@
     .review { margin-bottom: 8px; padding: 8px 10px; border-radius: 8px; background: #172433; border: 1px solid #28507a; }
     .review-t { font-weight: 600; }
     input.created { width: 120px; }
-    button.mini { padding: 0 6px; font-size: 11px; margin-top: 3px; }
+    button.mini { padding: 2px 6px; margin-top: 3px; line-height: 0; }
     td a, .review a { color: #6ab0ff; text-decoration: none; }
     td a:hover, .review a:hover { text-decoration: underline; }
     .gear-dot { color: #f2c14e; }
@@ -547,7 +549,7 @@
             : r.gid ? gidLink(r.gid) : dash("");
           if (r.created) gidCell += "<br><span class='empty'>" + (hasId(r) ? "ID " : "") + esc(r.created) + "</span>";
           const paste = (field) =>
-            editable && hasId(r) ? '<br><button class="mini" data-act="paste-id" data-field="' + field + '" data-i="' + i + '" title="Escribir ' + esc(r.created) + ' en la grilla">Pegar ID</button>' : "";
+            editable && hasId(r) ? '<br><button class="mini" data-act="paste-id" data-field="' + field + '" data-i="' + i + '" title="Pegar ' + esc(r.created) + ' acá" aria-label="Pegar ID">' + PASTE_ICON + "</button>" : "";
           return (
             "<tr><td class='n'>" + r.n + "</td><td>" + esc(r.itemId) +
             (r.variationId ? "<br><span class='empty'>var " + esc(r.variationId) + "</span>" : "") +
