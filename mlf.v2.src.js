@@ -1289,6 +1289,54 @@
       : "";
   }
 
+  // Detector de marca/fabricante/línea/modelo genéricos. Solo avisa:
+  // rojo = es muy evidente (marca genérica, sin marca, N/A...);
+  // amarillo = podría serlo (nombre de tienda, URL, términos de venta...).
+  const GENERIC_RED_WORDS =
+    /\b(generic[oa]s?|generic|sin marca|sem marca|sin modelo|sem modelo|sin linea|sem linha|sin fabricante|sem fabricante|no ?brand|unbranded|marca blanca|white ?label|no aplica|nao se aplica|nao aplica|no especificad[oa]|sin especificar|sem especificacao|desconocid[oa]s?|desconhecid[oa]s?|unknown)\b/;
+  const GENERIC_RED_WHOLE =
+    /^(n\/?a|na|ninguno|ninguna|ningun|nenhum|nenhuma|none|no tiene|nao tem|otra|otro|otros|otras|outro|outros|other|others|varios|varias|vario|various|surtido|sortido|assorted|oem|s\/?m|s\/?marca|sm|[-.?_*]+|0+|x+)$/;
+  const GENERIC_SHOP_WORDS =
+    /\b(shop|shops|store|stores|tienda|tiendas|loja|lojas|e-?commerce|ecom|outlet|mayorista|mayoristas|atacado|atacadista|distribuidora|distribuidor|importadora|importador|imports?|exports?|mercado|market|mall|online|boutique|bazar|bazaar|comercial|comercio|ventas|vendas)\b/;
+  const GENERIC_PROMO_WORDS =
+    /\b(oficial|official|oferta|ofertas|promo|promocion|liquidacion|original|premium|importado|importada|imported|marca propia|own brand|artesanal|handmade|hecho a mano|feito a mao|kit|combo|pack|set)\b/;
+
+  function genericFlag(label, value) {
+    const key = normalizeAttrLabel(String(label || "").replace(/\s*\([^)]*\)\s*$/, ""));
+    if (!PARENT_ATTR_LABELS.includes(key)) return null;
+    const v = normalizeAttrLabel(value);
+    if (!v) return null;
+    const isBrandLike = key === "marca" || key === "fabricante";
+    if (GENERIC_RED_WORDS.test(v) || GENERIC_RED_WHOLE.test(v)) {
+      return { level: "red", text: `"${String(value).trim()}" parece genérico, no es un dato real de ${key}.` };
+    }
+    const shop = v.match(GENERIC_SHOP_WORDS) || v.match(/[a-z](shop|store|tienda|loja|ecommerce)$/);
+    if (shop) return { level: "yellow", text: `Parece nombre de tienda o vendedor ("${shop[1] || shop[0]}"): revisá que sea ${key} real.` };
+    if (/(https?:|www\.|\.com\b|\.com\.[a-z]{2}\b|\.ar\b|\.br\b|@)/.test(v)) {
+      return { level: "yellow", text: `Parece una web o un mail: revisá que sea ${key} real.` };
+    }
+    if (isBrandLike) {
+      const promo = v.match(GENERIC_PROMO_WORDS);
+      if (promo) return { level: "yellow", text: `Trae un término de venta ("${promo[0]}"): revisá que sea ${key} real.` };
+      if (v.length < 2 || /^\d+$/.test(v)) return { level: "yellow", text: `Valor muy corto o solo números: revisá que sea ${key} real.` };
+    }
+    if (key === "marca" && /\b(ltda|eireli|srl|s\.r\.l\.?|llc|inc|gmbh|s\.a\.)$/.test(v)) {
+      return { level: "yellow", text: "Parece una razón social, no una marca: revisá." };
+    }
+    return null;
+  }
+
+  function genericBadge(flag) {
+    const el = document.createElement("div");
+    el.style.cssText =
+      "margin-top:3px;font-size:11px;border-radius:5px;padding:3px 6px;display:inline-block;" +
+      (flag.level === "red"
+        ? "color:#b42318;background:#fef3f2;border:1px solid #fecdca"
+        : "color:#8a5a00;background:#fff7e6;border:1px solid #f1e2bd");
+    el.textContent = (flag.level === "red" ? "⛔ " : "⚠ ") + flag.text;
+    return el;
+  }
+
   function showAttributePicker({
     headerText, attributes, images = [], bullets = [], kind, notice, emptyText, copyButtonText,
   }) {
@@ -1379,6 +1427,16 @@
       refreshLenWarn();
       valueEl.addEventListener("input", refreshLenWarn);
       text.appendChild(lenWarn);
+
+      const genericHolder = document.createElement("div");
+      const refreshGeneric = () => {
+        genericHolder.textContent = "";
+        const flag = genericFlag(attr.label, valueEl.textContent);
+        if (flag) genericHolder.appendChild(genericBadge(flag));
+      };
+      refreshGeneric();
+      valueEl.addEventListener("input", refreshGeneric);
+      text.appendChild(genericHolder);
 
       if (attr.possibleDuplicate) {
         const warn = document.createElement("div");
@@ -1612,8 +1670,9 @@
   // así lo que no se pudo pegar queda a mano. Lo que falló va arriba y el
   // cuadro se abre solo; si todo salió bien queda en una línea.
   function showPasteSummary({ rows = [], parts = [], detailLines = [], failedUrls = [] }) {
-    const problems = rows.filter((row) => row.warning);
-    const okRows = rows.filter((row) => !row.warning);
+    rows.forEach((row) => (row.generic = genericFlag(row.label, row.value)));
+    const problems = rows.filter((row) => row.warning || row.generic);
+    const okRows = rows.filter((row) => !row.warning && !row.generic);
     const toReview = problems.length + failedUrls.length;
 
     const box = document.createElement("div");
@@ -1661,6 +1720,7 @@
         warn.textContent = "⚠ " + row.warning;
         text.appendChild(warn);
       }
+      if (row.generic) text.appendChild(genericBadge(row.generic));
       item.append(text, makeCopyButton(() => row.value || "", "Copiar"));
       detail.appendChild(item);
     };
@@ -2435,7 +2495,9 @@
   function showFallasSummary({ rows, others, photoLines, photoWarnings, bullets = [] }) {
     const changed = rows.filter((row) => row.changed).length;
     const alreadySet = rows.filter((row) => row.alreadySet).length;
-    const toReview = rows.filter((row) => row.warning).length + others.length + photoWarnings.length;
+    rows.forEach((row) => (row.generic = genericFlag(row.label, row.newValue)));
+    const toReview =
+      rows.filter((row) => row.warning || row.generic).length + others.length + photoWarnings.length;
 
     const box = document.createElement("div");
     box.id = "mlf-bk-summary";
@@ -2521,6 +2583,7 @@
         "color:#374151;word-break:break-word"
       );
       if (row.warning) addLine(item, "⚠ " + row.warning, WARNING_STYLE);
+      if (row.generic) item.appendChild(genericBadge(row.generic));
       if (row.copyValue) {
         const copyRow = document.createElement("div");
         copyRow.style.cssText = "margin-top:4px";
