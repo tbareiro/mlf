@@ -492,8 +492,8 @@
     button.chip-f.on { background: #1f6f3f; border-color: #2e9a58; color: #fff; }
     button.copy { margin: 0 0 0 6px; vertical-align: middle; }
     button.mini { padding: 2px 6px; margin-top: 3px; line-height: 0; }
-    td a, .review a { color: #6ab0ff; text-decoration: none; }
-    td a:hover, .review a:hover { text-decoration: underline; }
+    .glink { color: #6ab0ff; cursor: pointer; }
+    .glink:hover { text-decoration: underline; }
     .gear-dot { color: #f2c14e; }
     details { padding: 0 10px 8px; }
     summary { cursor: pointer; color: #8b8b96; font-size: 12px; margin-bottom: 6px; }
@@ -540,7 +540,9 @@
   const dash = (v) => (v ? esc(v) : "<span class='empty'>—</span>");
 
   const gidUrl = (gid) => GID_URL + encodeURIComponent(gid);
-  const gidLink = (gid) => '<a href="' + esc(gidUrl(gid)) + '" target="_blank" rel="noopener" title="Abrir la creación de este GID">' + esc(gid) + " ↗</a>";
+  // No es un <a>: la página podría interceptar los links y navegar en la
+  // misma pestaña. Se abre a mano con window.open (siempre pestaña nueva).
+  const gidLink = (gid) => '<span class="glink" role="link" tabindex="0" data-act="open-gid" data-url="' + esc(gidUrl(gid)) + '" title="Abrir la creación de este GID en otra pestaña">' + esc(gid) + " ↗</span>";
   // Filas que se revisan: solo las que tienen GID Creación cargado.
   const reviewIdx = (rows) => rows.map((r, i) => (r.gid ? i : -1)).filter((i) => i >= 0);
   // Botón de copiar el identificador de la tarea (muestra ✓ un instante).
@@ -922,6 +924,17 @@
   shadow.addEventListener("click", (ev) => {
     const el = ev.target.closest("[data-act]");
     if (!el) return;
+    if (el.dataset.act === "open-gid") {
+      ev.preventDefault();
+      const w = window.open(el.dataset.url, "_blank");
+      if (w) {
+        try { w.opener = null; } catch (e) {}
+      } else {
+        state.msg = { kind: "bad", html: "El navegador bloqueó la pestaña nueva. Permití ventanas emergentes para este sitio." };
+        render();
+      }
+      return;
+    }
     onAction(el.dataset.act, el);
   });
 
