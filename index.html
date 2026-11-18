@@ -327,6 +327,8 @@
   }
 
   .beta-details{margin-top:14px}
+  .old-bk{margin-top:0}
+  .old-bk .browser-chrome{margin-top:12px}
   .beta-details summary{
     cursor:pointer;
     color:var(--mute);
@@ -472,7 +474,7 @@
       <h3>Cómo se usa</h3>
       <ol>
         <li><b>Abrí la tarea</b> y tocá el botón Cx4 en favoritos. Aparece un panel arriba a la derecha (se minimiza con – y se cierra con ×). Hay que tocarlo una vez cada vez que se carga la página de nuevo; después se queda vigilando solo.</li>
-        <li><b>Guardá:</b> con <i>Guardar y autoguardar</i> se anota la tarea (Identificador + Dominio) y, por fila, Item ID, Resolución, Producto a forzar y Comentario. Desde ahí se autoguarda cada cambio. En cada fila podés escribir el <b>GID Creación</b>, que no figura en la grilla.</li>
+        <li><b>Guardá:</b> con <i>Guardar</i> se anota la tarea (Identificador + Dominio) y, por fila, Item ID, Resolución, Producto a forzar y Comentario. Desde ahí se autoguarda cada cambio. En cada fila podés escribir el <b>GID Creación</b>, que no figura en la grilla.</li>
         <li><b>Volvé más tarde:</b> al abrir una tarea guardada, Cx4 avisa y pregunta si querés retomarla. <i>Retomar</i> (o el botón <i>Pegar</i>) escribe en la grilla lo guardado; las filas se reconocen por Item ID + Variation ID, no por posición.</li>
         <li><b>Revisar creaciones:</b> recorre una por una las filas que tienen GID Creación. Cada paso muestra el link del GID (abre en otra pestaña), un campo <i>ID creado</i> (o <i>No se creó</i>) y la <i>Resolución</i>, que se puede cambiar ahí mismo (por ejemplo a <i>Optin a otra PDP</i>). Cx4 no valida el ID: lo anota quien revisa.</li>
         <li><b>Pegar el ID:</b> con el ícono de pegar, debajo de <i>Forzar</i> o de <i>Comentario</i>, el ID creado se escribe en esa columna de la grilla.</li>
@@ -486,7 +488,8 @@
   </section>
 
   <section>
-    <h2>Versiones viejas · botones sueltos</h2>
+    <details class="beta-details old-bk">
+    <summary>Versiones viejas · botones sueltos</summary>
     <div class="browser-chrome">
       <div class="chrome-top">
         <div class="chrome-dot"></div><div class="chrome-dot"></div><div class="chrome-dot"></div>
@@ -517,6 +520,7 @@
       </div>
     </div>
     <p class="drag-hint">arrastrá cada botón de acá arriba directo a tu barra de favoritos (Ctrl+Shift+B si no la tenés visible)</p>
+    </details>
   </section>
 
   <!-- Oculta por ahora (pedido explícito) — se deja el markup/script tal

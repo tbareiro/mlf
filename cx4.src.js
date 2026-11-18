@@ -640,7 +640,7 @@
       current += rowsTable(rowsNow, true);
       if (!rowsNow.length) current += '<div class="msg bad">No encontré filas en la grilla. ¿Está cargada la tarea?</div>';
       current += '<div class="row-actions">';
-      current += '<button class="primary" data-act="save"' + (rowsNow.length ? "" : " disabled") + ">" + (saved ? "Actualizar" : "Guardar y autoguardar") + "</button>";
+      current += '<button class="primary" data-act="save"' + (rowsNow.length ? "" : " disabled") + ">" + (saved ? "Actualizar" : "Guardar") + "</button>";
       if (saved) current += '<button data-act="restore"' + (state.busy ? " disabled" : "") + ' title="Escribe en la grilla lo que tenías guardado">Pegar</button>';
       current += '<button data-act="review"' + (rowsNow.length ? "" : " disabled") + ">Revisar creaciones</button>";
       current += "</div>";
