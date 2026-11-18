@@ -488,6 +488,9 @@
     .review { margin-bottom: 8px; padding: 8px 10px; border-radius: 8px; background: #172433; border: 1px solid #28507a; }
     .review-t { font-weight: 600; }
     input.created { width: 120px; }
+    button.chip-f { float: right; text-transform: none; letter-spacing: 0; font-size: 11px; padding: 1px 8px; border-radius: 999px; }
+    button.chip-f.on { background: #1f6f3f; border-color: #2e9a58; color: #fff; }
+    button.copy { margin: 0 0 0 6px; vertical-align: middle; }
     button.mini { padding: 2px 6px; margin-top: 3px; line-height: 0; }
     td a, .review a { color: #6ab0ff; text-decoration: none; }
     td a:hover, .review a:hover { text-decoration: underline; }
@@ -514,6 +517,8 @@
     settings: false, // engranaje: respaldos
     expanded: new Set(), // tareas guardadas con el detalle abierto
     search: "", // filtro de la lista de guardadas
+    onlyClosable: false, // filtro "Cerrables"
+    copied: "", // id recién copiado (para mostrar ✓)
     watchKey: "",
     misses: 0,
   };
@@ -538,6 +543,10 @@
   const gidLink = (gid) => '<a href="' + esc(gidUrl(gid)) + '" target="_blank" rel="noopener" title="Abrir la creación de este GID">' + esc(gid) + " ↗</a>";
   // Filas que se revisan: solo las que tienen GID Creación cargado.
   const reviewIdx = (rows) => rows.map((r, i) => (r.gid ? i : -1)).filter((i) => i >= 0);
+  // Botón de copiar el identificador de la tarea (muestra ✓ un instante).
+  const copyBtn = (id) =>
+    '<button class="mini copy" data-act="copy-id" data-id="' + esc(id) + '" title="Copiar el identificador ' + esc(id) + '" aria-label="Copiar identificador">' +
+    (state.copied === id ? "✓" : PASTE_ICON) + "</button>";
   const hasId = (r) => r.created && r.created !== NO_CREADO;
 
   function rowsTable(rows, editable) {
@@ -598,7 +607,7 @@
     if (key) {
       const rowsNow = state.rows;
       const emptyRes = rowsNow.filter((r) => !r.resolution).length;
-      current += '<div class="meta"><b>Tarea</b><span>' + esc(id) + "</span><b>Dominio</b><span>" + esc(domain) + "</span></div>";
+      current += '<div class="meta"><b>Tarea</b><span>' + esc(id) + copyBtn(id) + "</span><b>Dominio</b><span>" + esc(domain) + "</span></div>";
       current +=
         '<div style="margin-bottom:8px">' +
         (saved
@@ -657,11 +666,13 @@
     // botón ✓ = marcar como hecha (pide confirmación antes de borrar).
     let list = "";
     const q = state.search.trim().toLowerCase();
-    const matches = q
-      ? entries.filter(([, e]) =>
-          (e.id + " " + e.domain + " " + e.rows.map((r) => r.itemId + " " + (r.gid || "")).join(" ")).toLowerCase().includes(q)
-        )
-      : entries;
+    const isClosable = (e) => e.rows.length > 0 && e.rows.every((r) => r.resolution);
+    const closableCount = entries.filter(([, e]) => isClosable(e)).length;
+    const matches = entries.filter(
+      ([, e]) =>
+        (!state.onlyClosable || isClosable(e)) &&
+        (!q || (e.id + " " + e.domain + " " + e.rows.map((r) => r.itemId + " " + (r.gid || "")).join(" ")).toLowerCase().includes(q))
+    );
     const shown = matches.slice(0, MAX_SHOWN);
     if (!entries.length) list = '<div class="none" style="padding:6px 8px">Todavía no guardaste ninguna tarea.</div>';
     else if (!matches.length) list = '<div class="none" style="padding:6px 8px">Sin resultados.</div>';
@@ -674,7 +685,8 @@
       list +=
         '<div class="entry' + (isCur ? " current" : "") + '">' +
         '<div class="entry-head"><button class="entry-title" data-act="expand" data-key="' + esc(k) + '" title="Ver filas">' +
-        (open ? "▾ " : "▸ ") + "<b>" + esc(e.id) + "</b> · " + esc(e.domain) + "<small>" + e.rows.length + "f · " + esc(short) + (e.rows.length && e.rows.every((r) => r.resolution) ? " · ✔ cerrable" : "") + "</small></button>" +
+        (open ? "▾ " : "▸ ") + "<b>" + esc(e.id) + "</b> · " + esc(e.domain) + "<small>" + e.rows.length + "f · " + esc(short) + (isClosable(e) ? " · ✔ cerrable" : "") + "</small></button>" +
+        copyBtn(e.id) +
         '<button class="done" data-act="tick" data-key="' + esc(k) + '" title="Borrar esta tarea (pide confirmación)">✕</button></div>';
       if (confirming) {
         list +=
@@ -712,7 +724,11 @@
       promptHtml +
       settingsHtml +
       "<section><h2>Esta tarea</h2>" + current + "</section>" +
-      "<section><h2>Guardadas (" + entries.length + ")</h2>" +
+      "<section><h2>Guardadas (" + entries.length + ")" +
+      (entries.length
+        ? ' <button class="chip-f' + (state.onlyClosable ? " on" : "") + '" data-act="filter-closable" title="Mostrar solo las tareas con todas las filas resueltas">✔ Cerrables (' + closableCount + ")</button>"
+        : "") +
+      "</h2>" +
       (entries.length > MAX_SHOWN || q
         ? '<input class="search" data-search placeholder="Buscar por tarea, dominio, Item ID o GID" value="' + esc(state.search) + '">'
         : "") +
@@ -813,6 +829,18 @@
       const k = el.dataset.key;
       if (state.expanded.has(k)) state.expanded.delete(k);
       else state.expanded.add(k);
+    } else if (act === "filter-closable") {
+      state.onlyClosable = !state.onlyClosable;
+    } else if (act === "copy-id") {
+      const id = el.dataset.id;
+      const ok = await copyText(id);
+      if (ok) {
+        state.copied = id;
+        setTimeout(() => {
+          state.copied = "";
+          if (!isTyping()) render();
+        }, 1200);
+      } else state.msg = { kind: "bad", html: "No pude copiar al portapapeles." };
     } else if (act === "review") {
       state.rows = readRows(state.gids);
       if (reviewIdx(state.rows).length) state.review = { i: 0 };
@@ -921,7 +949,8 @@
 
   shadow.addEventListener("input", (ev) => {
     const t = ev.target;
-    if (!(t.matches && t.matches("[data-search]"))) return;    state.search = t.value;
+    if (!(t.matches && t.matches("[data-search]"))) return;
+    state.search = t.value;
     const pos = t.selectionStart;
     render();
     const n = shadow.querySelector("[data-search]");
