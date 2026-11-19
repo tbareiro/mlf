@@ -298,6 +298,15 @@
         const input = c && c.querySelector("input, textarea");
         return input ? input.value : "";
       };
+      // Forzar solo admite números: se marca en rojo en la grilla real si tiene letras.
+      const fc = cellOf(r.el, "force_pdp");
+      const fi = fc && fc.querySelector("input, textarea");
+      if (fi) {
+        const badF = /\D/.test(fi.value.trim());
+        if (badF) fi.style.cssText += ";outline:2px solid #e5483b!important;background:#ffe3e0!important;";
+        else if (fi.dataset.cx4Red) fi.style.outline = fi.style.background = "";
+        if (badF) fi.dataset.cx4Red = "1"; else delete fi.dataset.cx4Red;
+      }
       const row = {
         n: i + 1,
         itemId: txt("item_id"),
@@ -509,6 +518,8 @@
     .review { margin-bottom: 8px; padding: 8px 10px; border-radius: 8px; background: #172433; border: 1px solid #28507a; }
     .review-t { font-weight: 600; }
     input.created { width: 120px; }
+    input.gid.bad { border-color: #e5483b; color: #ff7b6e; background: #2a1210; }
+    .redtxt { color: #ff7b6e; font-weight: 600; }
     button.chip-f { float: right; text-transform: none; letter-spacing: 0; font-size: 11px; padding: 1px 8px; border-radius: 999px; }
     button.chip-f.on { background: #1f6f3f; border-color: #2e9a58; color: #fff; }
     button.copy { margin: 0 0 0 6px; vertical-align: middle; }
@@ -571,6 +582,8 @@
     '<button class="mini copy" data-act="copy-id" data-id="' + esc(id) + '" title="Copiar el identificador ' + esc(id) + '" aria-label="Copiar identificador">' +
     (state.copied === id ? "✓" : PASTE_ICON) + "</button>";
   const hasId = (r) => r.created && r.created !== NO_CREADO;
+  // Forzar solo admite números: cualquier otro carácter se marca en rojo.
+  const notNumeric = (v) => !!v && v !== NO_CREADO && /\D/.test(v);
 
   function rowsTable(rows, editable) {
     if (!rows.length) return '<div class="none">Sin filas.</div>';
@@ -582,13 +595,13 @@
             ? '<input class="gid" data-gid="' + esc(rowKey(r)) + '" value="' + esc(r.gid) + '" placeholder="GID" maxlength="40">' +
               (r.gid ? "<br>" + gidLink(r.gid) : "")
             : r.gid ? gidLink(r.gid) : dash("");
-          if (r.created) gidCell += "<br><span class='empty'>" + (hasId(r) ? "ID " : "") + esc(r.created) + "</span>";
+          if (r.created) gidCell += "<br><span class='" + (notNumeric(r.created) ? "redtxt" : "empty") + "'>" + (hasId(r) ? "ID " : "") + esc(r.created) + "</span>";
           const paste = (field) =>
             editable && hasId(r) ? '<br><button class="mini" data-act="paste-id" data-field="' + field + '" data-i="' + i + '" title="Pegar ' + esc(r.created) + ' acá" aria-label="Pegar ID">' + PASTE_ICON + "</button>" : "";
           return (
             "<tr><td class='n'>" + r.n + "</td><td>" + esc(r.itemId) +
             (r.variationId ? "<br><span class='empty'>var " + esc(r.variationId) + "</span>" : "") +
-            "</td><td>" + gidCell + "</td><td>" + dash(r.resolution) + "</td><td>" + dash(r.force) + paste("force") + "</td><td>" + dash(r.comment) + paste("comment") + "</td></tr>"
+            "</td><td>" + gidCell + "</td><td>" + dash(r.resolution) + "</td><td>" + (/\D/.test(r.force || "") ? "<span class='redtxt'>" + esc(r.force) + "</span>" : dash(r.force)) + paste("force") + "</td><td>" + dash(r.comment) + paste("comment") + "</td></tr>"
           );
         })
         .join("") +
@@ -648,7 +661,7 @@
         current +=
           '<div class="review"><div class="review-t">Creación ' + (k + 1) + " de " + revIdx.length + " · fila " + r.n + " · " + esc(r.itemId) + "</div>" +
           '<div style="margin:4px 0">GID Creación: ' + gidLink(r.gid) + "</div>" +
-          '<div style="margin:6px 0">ID creado: <input class="gid created" data-created="' + esc(rowKey(r)) + '" value="' + esc(r.created) + '" placeholder="ID del producto" maxlength="40">' +
+          '<div style="margin:6px 0">ID creado: <input class="gid created' + (notNumeric(r.created) ? " bad" : "") + '" data-created="' + esc(rowKey(r)) + '" value="' + esc(r.created) + '" placeholder="ID del producto" maxlength="40">' +
           ' <button data-act="no-created" data-key="' + esc(rowKey(r)) + '">No se creó</button></div>' +
           '<div style="margin:6px 0">Resolución: <select data-res="' + i + '">' +
           (r.resolution ? "" : "<option value=\"\">— elegir —</option>") +
@@ -882,6 +895,7 @@
       const pageRow = rowElements()[Number(el.dataset.i)];
       const input = pageRow && cellOf(pageRow.el, el.dataset.field === "force" ? "force_pdp" : "comment")?.querySelector("input, textarea");
       if (!r || !input) state.msg = { kind: "bad", html: "No encontré ese campo en la grilla." };
+      else if (el.dataset.field === "force" && notNumeric(r.created)) state.msg = { kind: "bad", html: "Forzar solo admite números: " + esc(r.created) + " tiene letras." };
       else {
         const cur = input.value.trim();
         const v = el.dataset.field === "comment" && cur && !cur.includes(r.created) ? cur + " " + r.created : r.created;
@@ -987,6 +1001,10 @@
 
   shadow.addEventListener("input", (ev) => {
     const t = ev.target;
+    if (t.matches && t.matches("input.created")) {
+      t.classList.toggle("bad", notNumeric(t.value)); // rojo en vivo, sin re-render
+      return;
+    }
     if (!(t.matches && t.matches("[data-search]"))) return;
     state.search = t.value;
     const pos = t.selectionStart;
@@ -1019,7 +1037,28 @@
     } else if (t.matches && t.matches("input.gid")) {
       // Persistir sin re-renderizar (si se re-renderizara entre el
       // mousedown y el mouseup de otro botón, se perdería ese click).
-      if (t.dataset.created) await setRowField(t.dataset.created, "created", t.value.trim(), true);
+      if (t.dataset.created) {
+        const v = t.value.trim();
+        await setRowField(t.dataset.created, "created", v, true);
+        // Si es un ID válido, queda cargado en la columna Forzar de la grilla.
+        if (v && v !== NO_CREADO) {
+          const idx = state.rows.findIndex((x) => rowKey(x) === t.dataset.created);
+          if (notNumeric(v)) state.msg = { kind: "bad", html: "Forzar solo admite números: " + esc(v) + " tiene letras, no se cargó en la grilla." };
+          else if (idx >= 0) {
+            const pageRow = rowElements()[idx];
+            const inp = pageRow && cellOf(pageRow.el, "force_pdp")?.querySelector("input, textarea");
+            const ok = inp && writeField(inp, v);
+            await sleep(150);
+            state.rows = readRows(state.gids);
+            const tk = currentKey();
+            if (state.tracking.has(tk)) await autosaveIfNeeded(tk);
+            state.msg = ok && inp.value === v
+              ? { kind: "ok", html: "Cargado " + esc(v) + " en Forzar (fila " + state.rows[idx].n + ")." }
+              : { kind: "bad", html: "No pude cargar " + esc(v) + " en Forzar: la grilla no aceptó el valor." };
+          }
+          render();
+        }
+      }
       else await setRowField(t.dataset.gid, "gid", t.value.trim(), true);
     } else if (t.matches && t.matches("[data-file]")) {
       const file = t.files && t.files[0];
