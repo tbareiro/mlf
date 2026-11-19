@@ -82,6 +82,27 @@
     el.dispatchEvent(new Event("blur", { bubbles: true }));
   }
 
+  // Escribe como si se tipeara (foco + insertText): los campos controlados por
+  // React/Andes lo toman igual que un tipeo real. Si no pega, cae a setNativeValue.
+  // Devuelve true si el valor quedó en el campo.
+  function writeField(el, value) {
+    try {
+      el.focus();
+      el.select();
+      document.execCommand("insertText", false, value);
+    } catch (e) {}
+    if (el.value !== value) {
+      setNativeValue(el, value);
+      try {
+        el.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: value }));
+      } catch (e) {}
+    }
+    el.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    el.dispatchEvent(new Event("blur"));
+    try { el.blur(); } catch (e) {}
+    return el.value === value;
+  }
+
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -400,7 +421,7 @@
           continue;
         }
         // No se pisa lo que haya cargado el colaborador con un vacío.
-        if (saved[field] && input.value !== saved[field]) setNativeValue(input, saved[field]);
+        if (saved[field] && input.value !== saved[field] && !writeField(input, saved[field])) issues.push(label + ": la grilla no aceptó el valor");
       }
 
       if (saved.resolution) {
@@ -864,11 +885,15 @@
       else {
         const cur = input.value.trim();
         const v = el.dataset.field === "comment" && cur && !cur.includes(r.created) ? cur + " " + r.created : r.created;
-        setNativeValue(input, v);
+        const wrote = writeField(input, v);
+        await sleep(150);
+        const stuck = input.isConnected && input.value === v;
         state.rows = readRows(state.gids);
         const tk = currentKey();
         if (state.tracking.has(tk)) await autosaveIfNeeded(tk); // que el valor pegado quede guardado
-        state.msg = { kind: "ok", html: "Pegado " + esc(r.created) + " en " + (el.dataset.field === "force" ? "Producto a forzar" : "Comentario") + " (fila " + r.n + ")." };
+        if (!wrote || !stuck) await copyText(r.created);
+        if (!wrote || !stuck) state.msg = { kind: "bad", html: "No se pudo pegar " + esc(r.created) + " en la fila " + r.n + ": la grilla no aceptó el valor. Pegalo a mano (queda copiado en el portapapeles)." };
+        else state.msg = { kind: "ok", html: "Pegado " + esc(r.created) + " en " + (el.dataset.field === "force" ? "Producto a forzar" : "Comentario") + " (fila " + r.n + ")." };
       }
     } else if (act === "save") {
       state.rows = readRows(state.gids); // siempre lo que se ve AHORA
