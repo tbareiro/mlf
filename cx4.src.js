@@ -523,6 +523,10 @@
     button.chip-f { float: right; text-transform: none; letter-spacing: 0; font-size: 11px; padding: 1px 8px; border-radius: 999px; }
     button.chip-f.on { background: #1f6f3f; border-color: #2e9a58; color: #fff; }
     button.copy { margin: 0 0 0 6px; vertical-align: middle; }
+    .hold { margin: 8px 0; padding: 7px 10px; background: #1b1b21; border: 1px solid #2a2a31; border-radius: 8px; }
+    .hold-t { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #8b8b96; margin-bottom: 3px; }
+    .hold-r { display: flex; align-items: center; }
+    .hold-x { flex: 1; user-select: all; word-break: break-all; color: #ececf0; }
     button.mini { padding: 2px 6px; margin-top: 3px; line-height: 0; }
     .glink { color: #6ab0ff; cursor: pointer; }
     .glink:hover { text-decoration: underline; }
@@ -581,6 +585,12 @@
   const copyBtn = (id) =>
     '<button class="mini copy" data-act="copy-id" data-id="' + esc(id) + '" title="Copiar el identificador ' + esc(id) + '" aria-label="Copiar identificador">' +
     (state.copied === id ? "✓" : PASTE_ICON) + "</button>";
+  // Texto del "Motivo Hold": GIDs distintos (en orden), separados por ";".
+  const holdText = (rows) => {
+    const g = [];
+    rows.forEach((r) => { if (r.gid && !g.includes(r.gid)) g.push(r.gid); });
+    return g.length ? "Creacion Familia " + g.join(";") : "";
+  };
   const hasId = (r) => r.created && r.created !== NO_CREADO;
   // Forzar solo admite números: cualquier otro carácter se marca en rojo.
   const notNumeric = (v) => !!v && v !== NO_CREADO && /\D/.test(v);
@@ -653,6 +663,12 @@
         (rowsNow.length && emptyRes ? '<span class="badge warn">' + emptyRes + " fila(s) sin resolución</span>" : "") +
         (rowsNow.length && !emptyRes ? '<span class="badge ok">✔ Se puede cerrar</span>' : "") +
         "</div>";
+      const hold = holdText(rowsNow);
+      if (hold)
+        current +=
+          '<div class="hold"><div class="hold-t">Motivo Hold:</div><div class="hold-r"><span class="hold-x">' + esc(hold) + "</span>" +
+          '<button class="mini copy" data-act="copy-id" data-id="' + esc(hold) + '" title="Copiar el motivo" aria-label="Copiar motivo hold">' +
+          (state.copied === hold ? "✓" : PASTE_ICON) + "</button></div></div>";
       const revIdx = reviewIdx(rowsNow);
       if (state.review && revIdx.length) {
         const k = Math.min(state.review.i, revIdx.length - 1);
