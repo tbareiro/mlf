@@ -41,6 +41,7 @@
   const MAX_SHOWN = 3; // tareas guardadas visibles a la vez (el resto, con el buscador)
   const GID_URL = "https://catalog-domains.adminml.com/catalogo/bc-admin/crear-productos/";
   const NO_CREADO = "No se creó";
+  const CREATION_RES = "Optin a otra PDP";
   const RESOLUTIONS = ["Optin a misma PDP", "Optin a otra PDP", "Producto generico", "PDP Indefinida", "Item Indefinido", "No se encontro GTIN", "Variante sin stock", "Pain APD", "Sin info Childs", "Desestimar - Otros motivos"];
   const PASTE_ICON =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="3" width="11" height="14" rx="2.5"/><path d="M6.5 8C5.5 8.6 5 9.6 5 10.8V18a3 3 0 0 0 3 3h6.5c1.2 0 2.2-.6 2.8-1.6"/></svg>';
@@ -378,7 +379,11 @@
     }
     if (!opts) return { ok: false, why: "no se abrió el desplegable" };
 
-    const target = opts.find((li) => normalize(optionText(li)) === normalize(wanted));
+    const w = normalize(wanted);
+    const target =
+      opts.find((li) => normalize(optionText(li)) === w) ||
+      opts.find((li) => normalize(li.textContent).startsWith(w)) || // la opción puede traer texto extra
+      opts.find((li) => w.startsWith(normalize(optionText(li))) && normalize(optionText(li)).length > 3);
     if (!target) {
       pressKey(trig, "Escape");
       pressKey(document.body, "Escape");
@@ -434,8 +439,15 @@
       }
 
       if (saved.resolution) {
-        const r = await setResolution(hit.el, saved.resolution);
-        if (!r.ok) issues.push("Resolución: " + r.why);
+        // Al escribir comentario/forzar la grilla puede redibujar la fila:
+        // se vuelve a buscar el elemento actual y se reintenta si falla.
+        let r = { ok: false, why: "no encontré la fila" };
+        for (let attempt = 0; attempt < 3 && !r.ok; attempt++) {
+          await sleep(attempt ? 500 : 250);
+          const fresh = rowElements().find((x) => x.idx === hit.idx);
+          if (fresh) r = await setResolution(fresh.el, saved.resolution);
+        }
+        if (!r.ok) issues.push("Resolución «" + saved.resolution + "»: " + r.why);
       }
       report.push({ n: saved.n, itemId: saved.itemId, ok: !issues.length, issues });
     }
@@ -680,8 +692,9 @@
           '<div style="margin:6px 0">ID creado: <input class="gid created' + (notNumeric(r.created) ? " bad" : "") + '" data-created="' + esc(rowKey(r)) + '" value="' + esc(r.created) + '" placeholder="ID del producto" maxlength="40">' +
           ' <button data-act="no-created" data-key="' + esc(rowKey(r)) + '">No se creó</button></div>' +
           '<div style="margin:6px 0">Resolución: <select data-res="' + i + '">' +
-          (r.resolution ? "" : "<option value=\"\">— elegir —</option>") +
-          RESOLUTIONS.map((t) => "<option" + (normalize(t) === normalize(r.resolution) ? " selected" : "") + ">" + esc(t) + "</option>").join("") +
+          // Con GID Creación la resolución siempre es "Optin a otra PDP": es la única opción.
+          (normalize(r.resolution) === normalize(CREATION_RES) ? "" : '<option value="">' + (r.resolution ? "Actual: " + esc(r.resolution) + " · elegir" : "— elegir —") + "</option>") +
+          "<option" + (normalize(r.resolution) === normalize(CREATION_RES) ? " selected" : "") + ">" + esc(CREATION_RES) + "</option>" +
           "</select></div>" +
           '<div class="row-actions"><button data-act="review-prev"' + (k ? "" : " disabled") + ">‹ Anterior</button>" +
           '<button class="primary" data-act="review-next">' + (k < revIdx.length - 1 ? "Siguiente ›" : "Terminar") + "</button>" +
