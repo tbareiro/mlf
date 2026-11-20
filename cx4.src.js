@@ -691,11 +691,10 @@
           '<div style="margin:4px 0">GID Creación: ' + gidLink(r.gid) + "</div>" +
           '<div style="margin:6px 0">ID creado: <input class="gid created' + (notNumeric(r.created) ? " bad" : "") + '" data-created="' + esc(rowKey(r)) + '" value="' + esc(r.created) + '" placeholder="ID del producto" maxlength="40">' +
           ' <button data-act="no-created" data-key="' + esc(rowKey(r)) + '">No se creó</button></div>' +
-          '<div style="margin:6px 0">Resolución: <select data-res="' + i + '">' +
-          // Con GID Creación la resolución siempre es "Optin a otra PDP": es la única opción.
-          (normalize(r.resolution) === normalize(CREATION_RES) ? "" : '<option value="">' + (r.resolution ? "Actual: " + esc(r.resolution) + " · elegir" : "— elegir —") + "</option>") +
-          "<option" + (normalize(r.resolution) === normalize(CREATION_RES) ? " selected" : "") + ">" + esc(CREATION_RES) + "</option>" +
-          "</select></div>" +
+          // Con GID Creación la resolución siempre es "Optin a otra PDP": se pone sola al cargar el ID.
+          '<div style="margin:6px 0">Resolución: <b>' + (r.resolution ? esc(r.resolution) : "—") + "</b>" +
+          (r.created === NO_CREADO ? ' <span class="empty">(no se creó: elegila a mano en la grilla)</span>' : hasId(r) ? "" : ' <span class="empty">(se pone sola como «' + CREATION_RES + '» al cargar el ID)</span>') +
+          "</div>" +
           '<div class="row-actions"><button data-act="review-prev"' + (k ? "" : " disabled") + ">‹ Anterior</button>" +
           '<button class="primary" data-act="review-next">' + (k < revIdx.length - 1 ? "Siguiente ›" : "Terminar") + "</button>" +
           '<button data-act="review-close">Cerrar</button></div></div>';
@@ -706,7 +705,13 @@
       current += '<button class="primary" data-act="save"' + (rowsNow.length ? "" : " disabled") + ">" + (saved ? "Actualizar" : "Guardar") + "</button>";
       if (saved) current += '<button data-act="restore"' + (state.busy ? " disabled" : "") + ' title="Escribe en la grilla lo que tenías guardado">Pegar</button>';
       current += '<button data-act="review"' + (rowsNow.length ? "" : " disabled") + ">Revisar creaciones</button>";
+      if (saved && rowsNow.length && !emptyRes) current += '<button class="primary" data-act="close-task" title="Eliminarla de las guardadas">Tarea cerrada</button>';
       current += "</div>";
+      if (state.confirm && state.confirm.type === "close") {
+        current +=
+          '<div class="confirm">¿Dar la tarea por cerrada? Se elimina de las guardadas (no se puede deshacer).' +
+          '<div class="row-actions"><button class="danger" data-act="close-yes">Sí, cerrada</button><button data-act="cancel">Cancelar</button></div></div>';
+      }
       if (state.confirm && state.confirm.type === "save") {
         current +=
           '<div class="confirm">Ya hay una versión guardada de esta tarea con datos distintos. ¿Reemplazarla por lo que se ve ahora?' +
@@ -951,6 +956,17 @@
       // El tick solo abre la confirmación; recién "Sí, borrar" borra.
       const same = state.confirm && state.confirm.type === "del" && state.confirm.key === el.dataset.key;
       state.confirm = same ? null : { type: "del", key: el.dataset.key };
+    } else if (act === "close-task") {
+      state.confirm = state.confirm && state.confirm.type === "close" ? null : { type: "close" };
+    } else if (act === "close-yes") {
+      const ck = currentKey();
+      delete loadStore()[ck];
+      state.tracking.delete(ck);
+      await saveStore();
+      state.confirm = null;
+      state.prompt = false;
+      state.review = null;
+      state.msg = { kind: "ok", html: "Tarea cerrada y eliminada de las guardadas." };
     } else if (act === "del-yes") {
       delete loadStore()[el.dataset.key];
       state.tracking.delete(el.dataset.key);
@@ -1072,7 +1088,24 @@
         // Si es un ID válido, queda cargado en la columna Forzar de la grilla.
         if (v && v !== NO_CREADO) {
           const idx = state.rows.findIndex((x) => rowKey(x) === t.dataset.created);
-          if (notNumeric(v)) state.msg = { kind: "bad", html: "Forzar solo admite números: " + esc(v) + " tiene letras, no se cargó en la grilla." };
+          // Creación: la resolución es siempre "Optin a otra PDP", se pone sola.
+          let resMsg = "";
+          const resRow = idx >= 0 && rowElements()[idx];
+          if (resRow && normalize(readResolution(resRow.el)) !== normalize(CREATION_RES)) {
+            state.busy = true;
+            let rr = { ok: false };
+            for (let a = 0; a < 3 && !rr.ok; a++) {
+              if (a) await sleep(500);
+              const fresh = rowElements().find((x) => x.idx === resRow.idx);
+              if (fresh) rr = await setResolution(fresh.el, CREATION_RES);
+            }
+            state.busy = false;
+            if (!rr.ok) resMsg = " No pude poner la resolución «" + CREATION_RES + "»: " + esc(rr.why || "fila no encontrada") + ".";
+            state.rows = readRows(state.gids);
+            const tk0 = currentKey();
+            if (state.tracking.has(tk0)) await autosaveIfNeeded(tk0);
+          }
+          if (notNumeric(v)) state.msg = { kind: "bad", html: "Forzar solo admite números: " + esc(v) + " tiene letras, no se cargó en la grilla." + resMsg };
           else if (idx >= 0) {
             const pageRow = rowElements()[idx];
             const inp = pageRow && cellOf(pageRow.el, "force_pdp")?.querySelector("input, textarea");
@@ -1082,8 +1115,8 @@
             const tk = currentKey();
             if (state.tracking.has(tk)) await autosaveIfNeeded(tk);
             state.msg = ok && inp.value === v
-              ? { kind: "ok", html: "Cargado " + esc(v) + " en Forzar (fila " + state.rows[idx].n + ")." }
-              : { kind: "bad", html: "No pude cargar " + esc(v) + " en Forzar: la grilla no aceptó el valor." };
+              ? { kind: "ok", html: "Cargado " + esc(v) + " en Forzar (fila " + state.rows[idx].n + ")." + resMsg }
+              : { kind: "bad", html: "No pude cargar " + esc(v) + " en Forzar: la grilla no aceptó el valor." + resMsg };
           }
           render();
         }
