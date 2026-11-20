@@ -713,14 +713,12 @@
 
     const done = results.texto + results.select + results.dropdown + results.toggle;
     const parts = [`${done} campo(s) completados`];
-    if (results.added.length) parts.push(`${results.added.length} agregados como opción nueva (confirmar)`);
     if (results.approx.length) parts.push(`${results.approx.length} aproximados (revisar)`);
     if (results.duplicated.length) parts.push(`${results.duplicated.length} repetidos (mismo campo que otro atributo)`);
     if (results.protegido.length) parts.push(`${results.protegido.length} protegidos (no se tocan)`);
     if (results.sinMatch.length) parts.push(`${results.sinMatch.length} sin match`);
 
     const detailLines = [];
-    if (results.added.length) detailLines.push(`Agregados: ${results.added.join(", ")}`);
     if (results.approx.length) detailLines.push(`Revisar: ${results.approx.join(", ")}`);
     if (results.duplicated.length) detailLines.push(`Repetidos: ${results.duplicated.join(", ")}`);
     if (results.protegido.length) detailLines.push(`Protegidos (sin tocar): ${results.protegido.join(", ")}`);
@@ -736,7 +734,6 @@
     protegido: "Campo protegido: no se toca",
     duplicado: "Repetido: es el mismo campo que otro atributo",
     approx: "Se eligió una opción aproximada: revisar",
-    "dropdown-added": "Se agregó como opción nueva: revisar que esté bien escrito",
   };
 
   /**
@@ -1364,12 +1361,58 @@
     },
   ];
 
+  // Palabras prohibidas SOLO en el Título (rojo). Se comparan sin tildes ni
+  // mayúsculas. Para sumar o sacar una, editar esta lista.
+  const TITLE_FORBIDDEN = [
+    // envío y condiciones de venta
+    "envio gratis", "envios gratis", "envio a todo el pais", "envios a todo el pais", "free shipping", "frete gratis",
+    "entrega gratis", "entrega inmediata", "pronta entrega", "gratis", "mercado libre", "mercadolibre",
+    "mercado envios", "mercadoenvios", "mayorista", "por mayor", "x mayor", "por mayoreo", "atacado",
+    // precio y promociones
+    "oferta", "ofertas", "promo", "promocion", "descuento", "liquidacion", "remate", "rebaja", "barato",
+    "baratisimo", "mejor precio", "precio imbatible", "precio increible", "precio especial", "super precio",
+    "precio de fabrica", "outlet", "hot sale", "cyber monday", "black friday", "cuotas", "sin interes",
+    "2x1", "3x2", "imperdible", "oportunidad", "ultimas unidades", "stock", "en stock", "agotado",
+    // condición y autenticidad
+    "nuevo", "nueva", "nuevos", "nuevas", "usado", "usada", "seminuevo", "reacondicionado", "original",
+    "originales", "100% original", "garantia", "garantizado", "garantizada",
+    // réplicas
+    "replica", "imitacion", "copia", "1ra copia", "primera copia", "falsificado", "pirata", "clon",
+  ];
+  const TITLE_FORBIDDEN_RE = new RegExp(
+    "(?:^|[^a-z0-9])(" +
+      TITLE_FORBIDDEN.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") +
+      ")(?![a-z0-9])"
+  );
+  const TITLE_SYMBOLS_RE = /[!¡¿?*★☆✔✓✅❌➤►▶●■◆♥♦🔥💥⭐👉👍]|[\u{1F300}-\u{1FAFF}]|\/{2,}|#/u;
+
+  function titleForbiddenFlags(v, rawValue) {
+    const found = [];
+    const re = new RegExp(TITLE_FORBIDDEN_RE.source, "g");
+    let m;
+    while ((m = re.exec(v)) && found.length < 6) {
+      if (!found.includes(m[1])) found.push(m[1]);
+      re.lastIndex = m.index + m[0].length - 1;
+    }
+    const flags = [];
+    if (found.length) {
+      flags.push({ level: "red", text: `Palabra prohibida en el título: ${found.map((w) => `"${w}"`).join(", ")}` });
+    }
+    const symbol = String(rawValue).match(TITLE_SYMBOLS_RE);
+    if (symbol) flags.push({ level: "yellow", text: `Símbolo o emoji en el título: "${symbol[0]}"` });
+    if (/\b(?:similar a|igual a|inspirado en)\s+[a-z0-9]/.test(v)) {
+      flags.push({ level: "yellow", text: "Compara con otro producto o marca (similar a / igual a / inspirado en): revisá." });
+    }
+    return flags;
+  }
+
   function contentFlags(label, value) {
     const key = normalizeAttrLabel(String(label || "").replace(/\s*\([^)]*\)\s*$/, ""));
     if (key !== "titulo" && key !== "descripcion") return [];
     const v = normalizeAttrLabel(value);
     if (!v) return [];
     const flags = [];
+    if (key === "titulo") flags.push(...titleForbiddenFlags(v, value));
     CONTENT_RULES.forEach((rule) => {
       const m = v.match(rule.re);
       if (!m) return;
@@ -1378,7 +1421,13 @@
     });
     // Si ya salió "condición" en rojo, el "nuevo" suelto en amarillo sobra.
     const hasCondition = flags.some((f) => f.level === "red" && f.text.startsWith("Condición"));
-    const out = flags.filter((f) => !(hasCondition && f.text.startsWith("Menciona nuevo")));
+    // En el título, si ya salió "palabra prohibida", los avisos de condición,
+    // original, envíos, garantía y texto comercial dicen lo mismo: se omiten.
+    const hasForbidden = flags.some((f) => f.text.startsWith("Palabra prohibida"));
+    const redundant = /^(Menciona nuevo|Original|Envíos|Garantía|Texto comercial|Condición)/;
+    const out = flags.filter(
+      (f) => !(hasCondition && f.text.startsWith("Menciona nuevo")) && !(hasForbidden && redundant.test(f.text))
+    );
     return out.sort((a, b) => (a.level === b.level ? 0 : a.level === "red" ? -1 : 1)).slice(0, 6);
   }
 
@@ -2525,7 +2574,6 @@
           ? gtinCodesOf(attr.value).every((code) => nowCodes.includes(code) === (attr.action !== "Eliminado"))
           : sameValue(newValue, expected);
       if (!warning && !asked) warning = `Quedó distinto a lo pedido: ${expected || "(vacío)"}`;
-      else if (!warning && outcome === "dropdown-added") warning = "Se agregó como opción nueva: revisá que esté bien escrito";
       else if (!warning && !alreadySet && attr.original && !sameValue(oldValue, attr.original)) {
         warning = `La sugerencia decía original ${attr.original}`;
       }
