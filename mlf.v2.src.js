@@ -2923,6 +2923,329 @@
   }
 
   // ============================================================
+  // Reportar marca genérica (BC)
+  // ============================================================
+
+  // Que una marca sea genérica lo decide una persona, y por dominio: la
+  // misma marca puede existir en Joyería y ser genérica en Muebles. Este
+  // panel junta los datos para mandarlos a auditar; no cambia nada en BC.
+  const BRAND_REPORT_REASONS = [
+    "No se encuentran fuentes para validar",
+    "No se ve marca en el producto ni en las fotos",
+    "Es el nombre del vendedor o de la tienda",
+    "Marca blanca / white label",
+    "Otro (explicar en el comentario)",
+  ];
+
+  // BC muestra el dominio en el encabezado ("MLB-WARDROBES_AND_UPPER_STORAGES")
+  // y Comparator en la tarjeta "Domain Information", con ID y nombre. La
+  // planilla lo guarda sin el sitio (PENCIL_CASES): se separan. Si la clase
+  // cambia, se busca cualquier texto con forma de dominio en un elemento
+  // cuya clase diga "domain".
+  const DOMAIN_ID_RE = /^(M[A-Z]{2})-([A-Z0-9_]{3,})$/;
+
+  function findDomainText() {
+    const known = cleanText(
+      document.querySelector(".cp-create-products-header__domain, .comparator-result__domain-id")
+    );
+    if (known) return known;
+    const candidates = Array.from(document.querySelectorAll('[class*="domain"], [class*="Domain"]'));
+    for (const el of candidates) {
+      const text = cleanText(el);
+      if (DOMAIN_ID_RE.test(text)) return text;
+      const inner = Array.from(el.querySelectorAll("span, div, p")).map(cleanText).find((t) => DOMAIN_ID_RE.test(t));
+      if (inner) return inner;
+    }
+    return "";
+  }
+
+  function readPageDomain() {
+    const raw = findDomainText();
+    const match = raw.match(DOMAIN_ID_RE);
+    return {
+      site: match ? match[1] : "",
+      domain: match ? match[2] : raw,
+      name: cleanText(document.querySelector(".domain-info__name")),
+    };
+  }
+
+  function readPageBrand() {
+    const brandField = findBcField(document.getElementById("parent") || document, "BRAND");
+    if (brandField) {
+      return brandField.matches(".cp-form-field") ? readBcValue(brandField) : (brandField.value || "").trim();
+    }
+    try {
+      const attr = extractComparatorAttrGroups().find((a) => normalizeAttrLabel(a.label) === "marca");
+      return attr ? String(attr.value).trim() : "";
+    } catch (err) {
+      return "";
+    }
+  }
+
+  // En Comparator el dominio está en la tarjeta plegable "Domain Information".
+  // Plegada, la página puede no tener el contenido: se abre, se lee y se deja
+  // como estaba.
+  async function withDomainCardOpen(read) {
+    const toggle = Array.from(document.querySelectorAll(".comparator-result__collapsible-btn")).find((btn) =>
+      /domain information/i.test(cleanText(btn))
+    );
+    if (!toggle || toggle.getAttribute("aria-expanded") !== "false") return read();
+    toggle.click();
+    for (let i = 0; i < 10 && !findDomainText(); i++) await new Promise((r) => setTimeout(r, 100));
+    try {
+      return read();
+    } finally {
+      if (toggle.isConnected && toggle.getAttribute("aria-expanded") === "true") toggle.click();
+    }
+  }
+
+  // Lo que se puede leer de la pantalla; todo queda editable en el panel.
+  async function readBrandReportData() {
+    const id = (location.href.match(/\b(M[A-Z]{2}U?\d{6,})\b/i) || [])[1] || "";
+    const domain = await withDomainCardOpen(readPageDomain);
+    return { brand: readPageBrand(), id: id.toUpperCase(), ...domain, url: location.href };
+  }
+
+  // Apps Script de la planilla "Marcas genéricas/reales". Solo acepta cuentas
+  // de la empresa; anota quién reporta con el mail de la sesión de Google.
+  const BRAND_REPORT_URL =
+    "https://script.google.com/a/macros/mercadolibre.com/s/AKfycbyHI_2QOD0VZAp2rYXiJvFOTq3HBAej0Zw0e6vDhXUBfLzfnIb9E06yzOH7O8bAE_B0QA/exec";
+
+  function brandReportUrl(data) {
+    const params = new URLSearchParams();
+    Object.entries(data).forEach(([key, value]) => params.set(key, String(value || "").trim()));
+    return `${BRAND_REPORT_URL}?${params}`;
+  }
+
+  const BRAND_STATE_COLORS = {
+    pendiente: ["#8a5a00", "#fff4d6"],
+    generica: ["#b42318", "#fee4e2"],
+    real: ["#027a48", "#d1fadf"],
+  };
+
+  // Resultado que manda la ventanita del script, mostrado acá mismo.
+  function showBrandReportResult(msg) {
+    const OVERLAY_ID = "mlf-bk-overlay";
+    document.getElementById(OVERLAY_ID)?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = OVERLAY_ID;
+    overlay.style.cssText = [
+      "position:fixed", "top:16px", "right:16px", "width:340px",
+      "background:#fff", "color:#1f2328", "border-radius:10px",
+      "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
+      "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif", "overflow:hidden",
+    ].join(";");
+    overlay.appendChild(buildOverlayHeader("MLF — Reporte de marca"));
+
+    const body = document.createElement("div");
+    body.style.cssText = "padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;line-height:1.4";
+    const add = (text, css) => {
+      const el = document.createElement("div");
+      el.style.cssText = css;
+      el.textContent = text;
+      body.appendChild(el);
+      return el;
+    };
+    const icon = { saved: "✓", reported: "ℹ", audited: "ℹ", error: "✕" }[msg.status] || "";
+    const titleColor = msg.status === "saved" ? "#027a48" : msg.status === "error" ? "#b42318" : "#1d4ed8";
+    add(`${icon} ${msg.title || ""}`, `font-size:15px;font-weight:700;color:${titleColor}`);
+    if (msg.marca) {
+      add(msg.marca, "font-size:15px;font-weight:700");
+      add(`Dominio: ${msg.dominio}`, "color:#475467");
+    }
+    if (msg.estado) {
+      const line = add("Estado: ", "");
+      const [fg, bg] = BRAND_STATE_COLORS[normalizeAttrLabel(msg.estado)] || ["#344054", "#f2f4f7"];
+      const badge = document.createElement("span");
+      badge.style.cssText = `display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;color:${fg};background:${bg}`;
+      badge.textContent = msg.estado;
+      line.appendChild(badge);
+    }
+    if (msg.text) add(msg.text, "color:#344054");
+    (Array.isArray(msg.details) ? msg.details : []).forEach((d) => {
+      if (Array.isArray(d) && d[1]) add(`${d[0]}: ${d[1]}`, "font-size:12px;color:#475467");
+    });
+    overlay.appendChild(body);
+    document.body.appendChild(overlay);
+  }
+
+  // Solo se aceptan avisos de Google (el script corre en googleusercontent).
+  function listenBrandReportResult(win) {
+    const onMessage = (event) => {
+      if (!/^https:\/\/([a-z0-9-]+\.)*(googleusercontent\.com|script\.google\.com)$/.test(event.origin)) return;
+      let msg;
+      try {
+        msg = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+      } catch (err) {
+        return;
+      }
+      if (!msg || msg.source !== "mlf-brand-report") return;
+      window.removeEventListener("message", onMessage);
+      try { win.close(); } catch (err) { /* la cierra el usuario */ }
+      document.getElementById("mlf-bk-toast")?.remove();
+      showBrandReportResult(msg);
+    };
+    window.addEventListener("message", onMessage);
+    setTimeout(() => window.removeEventListener("message", onMessage), 120000);
+  }
+
+  async function runBrandReport() {
+    const OVERLAY_ID = "mlf-bk-overlay";
+    document.getElementById(OVERLAY_ID)?.remove();
+    const data = await readBrandReportData();
+
+    const overlay = document.createElement("div");
+    overlay.id = OVERLAY_ID;
+    overlay.style.cssText = [
+      "position:fixed", "top:16px", "right:16px", "width:340px", "max-height:80vh",
+      "background:#fff", "color:#1f2328", "border-radius:10px",
+      "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
+      "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif",
+      "display:flex", "flex-direction:column", "overflow:hidden",
+    ].join(";");
+    overlay.appendChild(buildOverlayHeader("MLF — Reportar marca genérica"));
+
+    const body = document.createElement("div");
+    body.style.cssText = "overflow-y:auto;padding:10px 14px 14px;display:flex;flex-direction:column;gap:10px";
+
+    const domainNote = document.createElement("div");
+    domainNote.style.cssText =
+      "padding:8px 10px;border-radius:7px;background:#fff7e6;border:1px solid #f1c76b;color:#5c3d00;line-height:1.4";
+    const noteTitle = document.createElement("div");
+    noteTitle.style.cssText = "font-weight:700;margin-bottom:2px";
+    noteTitle.textContent = "Genérica se decide por dominio";
+    const noteText = document.createElement("div");
+    noteText.style.cssText = "font-size:12px";
+    domainNote.append(noteTitle, noteText);
+    body.appendChild(domainNote);
+
+    const field = (labelText, value, placeholder) => {
+      const wrap = document.createElement("label");
+      wrap.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:12px;color:#4b5563";
+      wrap.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = value;
+      input.placeholder = placeholder || "";
+      input.style.cssText =
+        "padding:6px 8px;border:1px solid #d0d5dd;border-radius:6px;font:inherit;font-size:13px;color:#1f2328";
+      wrap.appendChild(input);
+      body.appendChild(wrap);
+      return input;
+    };
+
+    const brandInput = field("Marca", data.brand, "Marca que figura en BC");
+    const flagHolder = document.createElement("div");
+    body.appendChild(flagHolder);
+    const domainInput = field(
+      data.domain ? "Dominio (leído de la página)" : "Dominio (obligatorio)",
+      data.domain,
+      "Ej.: PENCIL_CASES"
+    );
+    const idInput = field("ID del producto", data.id, "Si no se completó solo, pegalo");
+
+    const reasonBox = document.createElement("div");
+    reasonBox.style.cssText = "display:flex;flex-direction:column;gap:4px;font-size:12px;color:#4b5563";
+    reasonBox.textContent = "Por qué parece genérica";
+    const reasonName = "mlf-brand-reason";
+    BRAND_REPORT_REASONS.forEach((reason) => {
+      const opt = document.createElement("label");
+      opt.style.cssText = "display:flex;gap:6px;align-items:flex-start;color:#1f2328;cursor:pointer";
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = reasonName;
+      radio.value = reason;
+      const text = document.createElement("span");
+      text.textContent = reason;
+      opt.append(radio, text);
+      reasonBox.appendChild(opt);
+    });
+    body.appendChild(reasonBox);
+
+    const evidenceInput = field("Evidencia (opcional)", "", "Link a una búsqueda, foto o web");
+    const commentInput = field("Comentario (opcional)", "", "");
+
+    // El aviso del dominio y el detector de Tiago se actualizan al escribir.
+    const refresh = () => {
+      const brand = brandInput.value.trim() || "esta marca";
+      const typed = domainInput.value.trim();
+      const domain = typed && typed === data.domain && data.name ? `${typed} (${data.name})` : typed;
+      noteText.textContent = domain
+        ? `Estás reportando "${brand}" como genérica en ${domain}. En otro dominio la misma marca puede existir.`
+        : `Completá el dominio: "${brand}" puede ser real en un dominio y genérica en otro.`;
+      flagHolder.textContent = "";
+      const flag = genericFlag("Marca", brandInput.value);
+      if (flag) flagHolder.appendChild(genericBadge(flag));
+    };
+    brandInput.addEventListener("input", refresh);
+    domainInput.addEventListener("input", refresh);
+    refresh();
+
+    const error = document.createElement("div");
+    error.style.cssText = "color:#b42318;font-size:12px;display:none";
+    body.appendChild(error);
+
+    const sendBtn = document.createElement("button");
+    sendBtn.type = "button";
+    sendBtn.textContent = "Enviar a la planilla";
+    sendBtn.style.cssText =
+      "width:100%;padding:10px;border:none;border-radius:7px;background:#1f2328;color:#fff;" +
+      "font-weight:700;font-size:13px;cursor:pointer";
+    // Se abre en una ventana chica y no con fetch: así viaja la sesión de
+    // Google del catalogador y la planilla sabe quién reporta. Tiene que
+    // abrirse en el mismo clic, si no el navegador la bloquea.
+    sendBtn.onclick = () => {
+      const reason = body.querySelector(`input[name="${reasonName}"]:checked`)?.value || "";
+      const missing = [
+        !brandInput.value.trim() && "la marca",
+        !domainInput.value.trim() && "el dominio",
+        !reason && "el motivo",
+      ].filter(Boolean);
+      if (missing.length) {
+        error.textContent = `Falta ${missing.join(", ")}.`;
+        error.style.display = "block";
+        return;
+      }
+      error.style.display = "none";
+      const typedDomain = domainInput.value.trim();
+      const url = brandReportUrl({
+        marca: brandInput.value,
+        dominio: typedDomain,
+        nombre: typedDomain === data.domain ? data.name : "",
+        sitio: data.site,
+        id: idInput.value,
+        motivo: reason,
+        evidencia: evidenceInput.value,
+        comentario: commentInput.value,
+        link: data.url,
+      });
+      const win = window.open(url, "mlf-brand-report", "width=520,height=360");
+      if (win) {
+        overlay.remove();
+        listenBrandReportResult(win);
+        showToast("Enviando el reporte…", ["Si la ventanita no se cierra sola, el resultado queda ahí."]);
+        return;
+      }
+      // Ventana bloqueada: un link común sí abre, porque es otro clic.
+      sendBtn.style.display = "none";
+      error.textContent = "El navegador bloqueó la ventana. Tocá el link para guardar el reporte:";
+      error.style.display = "block";
+      const link = document.createElement("a");
+      link.href = url;
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = "Guardar reporte";
+      link.style.cssText = "font-weight:700;color:#3483fa";
+      link.onclick = () => setTimeout(() => overlay.remove(), 0);
+      body.appendChild(link);
+    };
+    body.appendChild(sendBtn);
+
+    overlay.appendChild(body);
+    document.body.appendChild(overlay);
+  }
+
+  // ============================================================
   // Pegar unificado + menú principal
   // ============================================================
 
@@ -3092,6 +3415,16 @@
     gtinBtn.onclick = () => { menu.remove(); runGtinTrack(); };
     otherSec.appendChild(gtinBtn);
     body.appendChild(otherSec);
+
+    const brandSec = section("Marca");
+    const brandBtn = document.createElement("button");
+    brandBtn.type = "button";
+    brandBtn.textContent = "Reportar marca genérica";
+    brandBtn.style.cssText = gtinBtn.style.cssText;
+    hover(brandBtn);
+    brandBtn.onclick = () => { menu.remove(); runBrandReport(); };
+    brandSec.appendChild(brandBtn);
+    body.appendChild(brandSec);
 
     menu.appendChild(body);
     document.body.appendChild(menu);
