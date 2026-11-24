@@ -3024,7 +3024,18 @@
   };
 
   // Resultado que manda la ventanita del script, mostrado acá mismo.
-  function showBrandReportResult(msg) {
+  function brandStateBadge(estado) {
+    const [fg, bg] = BRAND_STATE_COLORS[normalizeAttrLabel(estado)] || ["#344054", "#f2f4f7"];
+    const badge = document.createElement("span");
+    badge.style.cssText = `display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;color:${fg};background:${bg}`;
+    badge.textContent = estado;
+    return badge;
+  }
+
+  // Resultado del reporte o de "Validar marca" (status "check"). `data` son
+  // los datos leídos de la página, para ofrecer reportar sin volver a leer.
+  function showBrandReportResult(msg, data) {
+    const isCheck = msg.status === "check";
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
     const overlay = document.createElement("div");
@@ -3035,10 +3046,11 @@
       "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
       "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif", "overflow:hidden",
     ].join(";");
-    overlay.appendChild(buildOverlayHeader("MLF — Reporte de marca"));
+    overlay.appendChild(buildOverlayHeader(isCheck ? "MLF — Validar marca" : "MLF — Reporte de marca"));
 
     const body = document.createElement("div");
-    body.style.cssText = "padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;line-height:1.4";
+    body.style.cssText =
+      "padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;line-height:1.4;max-height:70vh;overflow-y:auto";
     const add = (text, css) => {
       const el = document.createElement("div");
       el.style.cssText = css;
@@ -3046,31 +3058,53 @@
       body.appendChild(el);
       return el;
     };
-    const icon = { saved: "✓", reported: "ℹ", audited: "ℹ", error: "✕" }[msg.status] || "";
+    const icon = isCheck
+      ? { audited: "✔", reported: "⏳", none: "?" }[msg.found] || ""
+      : { saved: "✓", reported: "ℹ", audited: "ℹ", error: "✕" }[msg.status] || "";
     const titleColor = msg.status === "saved" ? "#027a48" : msg.status === "error" ? "#b42318" : "#1d4ed8";
     add(`${icon} ${msg.title || ""}`, `font-size:15px;font-weight:700;color:${titleColor}`);
     if (msg.marca) {
       add(msg.marca, "font-size:15px;font-weight:700");
       add(`Dominio: ${msg.dominio}`, "color:#475467");
     }
-    if (msg.estado) {
-      const line = add("Estado: ", "");
-      const [fg, bg] = BRAND_STATE_COLORS[normalizeAttrLabel(msg.estado)] || ["#344054", "#f2f4f7"];
-      const badge = document.createElement("span");
-      badge.style.cssText = `display:inline-block;padding:3px 10px;border-radius:999px;font-weight:700;color:${fg};background:${bg}`;
-      badge.textContent = msg.estado;
-      line.appendChild(badge);
-    }
+    if (msg.estado) add("Estado: ", "").appendChild(brandStateBadge(msg.estado));
     if (msg.text) add(msg.text, "color:#344054");
     (Array.isArray(msg.details) ? msg.details : []).forEach((d) => {
       if (Array.isArray(d) && d[1]) add(`${d[0]}: ${d[1]}`, "font-size:12px;color:#475467");
     });
+
+    if (isCheck) {
+      add("En otros dominios", "margin-top:4px;font-size:12px;font-weight:700;color:#475467");
+      const otros = (Array.isArray(msg.otros) ? msg.otros : []).filter(Array.isArray);
+      if (!otros.length) add("No aparece en ningún otro dominio.", "font-size:12px;color:#98a2b3");
+      otros.forEach(([dominio, estado, fuente]) => {
+        const row = add("", "display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px");
+        const name = document.createElement("span");
+        name.textContent = dominio;
+        const origin = document.createElement("span");
+        origin.style.cssText = "color:#98a2b3";
+        origin.textContent = fuente || "";
+        row.append(name, brandStateBadge(estado), origin);
+      });
+      if (otros.length) add("Es solo una pista: cada dominio se decide aparte.", "font-size:11px;color:#98a2b3");
+
+      if (msg.found === "none") {
+        const reportBtn = document.createElement("button");
+        reportBtn.type = "button";
+        reportBtn.textContent = "Reportar genérica";
+        reportBtn.style.cssText =
+          "margin-top:6px;width:100%;padding:9px;border:none;border-radius:7px;background:#1f2328;color:#fff;" +
+          "font-weight:700;font-size:13px;cursor:pointer";
+        reportBtn.onclick = () => runBrandReport({ ...(data || {}), brand: msg.marca, domain: msg.dominio });
+        body.appendChild(reportBtn);
+      }
+    }
     overlay.appendChild(body);
     document.body.appendChild(overlay);
   }
 
   // Solo se aceptan avisos de Google (el script corre en googleusercontent).
-  function listenBrandReportResult(win) {
+  function listenBrandReportResult(win, data) {
     const onMessage = (event) => {
       if (!/^https:\/\/([a-z0-9-]+\.)*(googleusercontent\.com|script\.google\.com)$/.test(event.origin)) return;
       let msg;
@@ -3083,16 +3117,105 @@
       window.removeEventListener("message", onMessage);
       try { win.close(); } catch (err) { /* la cierra el usuario */ }
       document.getElementById("mlf-bk-toast")?.remove();
-      showBrandReportResult(msg);
+      showBrandReportResult(msg, data);
     };
     window.addEventListener("message", onMessage);
     setTimeout(() => window.removeEventListener("message", onMessage), 120000);
   }
 
-  async function runBrandReport() {
+  function openBrandCheck(win, data) {
+    const url = brandReportUrl({ accion: "validar", marca: data.brand, dominio: data.domain });
+    win.location.href = url;
+    listenBrandReportResult(win, data);
+    showToast("Consultando la planilla…", ["Si la ventanita no se cierra sola, el resultado queda ahí."]);
+  }
+
+  // Panel chico para completar marca o dominio cuando la página no los tiene.
+  function showBrandCheckForm(data, message) {
     const OVERLAY_ID = "mlf-bk-overlay";
     document.getElementById(OVERLAY_ID)?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = OVERLAY_ID;
+    overlay.style.cssText = [
+      "position:fixed", "top:16px", "right:16px", "width:340px",
+      "background:#fff", "color:#1f2328", "border-radius:10px",
+      "box-shadow:0 4px 24px rgba(0,0,0,.3)", "z-index:2147483647",
+      "font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif", "overflow:hidden",
+    ].join(";");
+    overlay.appendChild(buildOverlayHeader("MLF — Validar marca"));
+    const body = document.createElement("div");
+    body.style.cssText = "padding:10px 14px 14px;display:flex;flex-direction:column;gap:8px";
+    const note = document.createElement("div");
+    note.style.cssText = "font-size:12px;color:#8a5a00";
+    note.textContent = message;
+    body.appendChild(note);
+    const field = (labelText, value) => {
+      const wrap = document.createElement("label");
+      wrap.style.cssText = "display:flex;flex-direction:column;gap:3px;font-size:12px;color:#4b5563";
+      wrap.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.value = value || "";
+      input.style.cssText =
+        "padding:6px 8px;border:1px solid #d0d5dd;border-radius:6px;font:inherit;font-size:13px;color:#1f2328";
+      wrap.appendChild(input);
+      body.appendChild(wrap);
+      return input;
+    };
+    const brandInput = field("Marca", data.brand);
+    const domainInput = field("Dominio", data.domain);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Validar";
+    btn.style.cssText =
+      "width:100%;padding:10px;border:none;border-radius:7px;background:#1f2328;color:#fff;" +
+      "font-weight:700;font-size:13px;cursor:pointer";
+    btn.onclick = () => {
+      const brand = brandInput.value.trim();
+      const domain = domainInput.value.trim().toUpperCase();
+      if (!brand || !domain) {
+        note.textContent = "Completá la marca y el dominio.";
+        return;
+      }
+      const win = window.open("about:blank", "mlf-brand-report", "width=520,height=420");
+      if (!win) {
+        note.textContent = "El navegador bloqueó la ventana: permití las ventanas emergentes para esta página.";
+        return;
+      }
+      overlay.remove();
+      openBrandCheck(win, { ...data, brand, domain });
+    };
+    body.appendChild(btn);
+    overlay.appendChild(body);
+    document.body.appendChild(overlay);
+  }
+
+  // "Validar marca": consulta la planilla antes de ponerse a buscar fuentes.
+  // La ventana se abre en el mismo clic del menú (si no, el navegador la
+  // bloquea) y recién después se lee la página y se la manda a consultar.
+  async function runBrandCheck() {
+    document.getElementById("mlf-bk-overlay")?.remove();
+    const win = window.open("about:blank", "mlf-brand-report", "width=520,height=420");
+    try {
+      if (win) win.document.title = "Consultando…";
+    } catch (err) { /* no importa */ }
     const data = await readBrandReportData();
+    if (!data.brand || !data.domain) {
+      try { win?.close(); } catch (err) { /* ya cerrada */ }
+      showBrandCheckForm(data, !data.brand ? "No encontré la marca en esta página." : "No encontré el dominio en esta página.");
+      return;
+    }
+    if (!win) {
+      showBrandCheckForm(data, "El navegador bloqueó la ventana. Tocá Validar para intentar de nuevo.");
+      return;
+    }
+    openBrandCheck(win, data);
+  }
+
+  async function runBrandReport(prefill) {
+    const OVERLAY_ID = "mlf-bk-overlay";
+    document.getElementById(OVERLAY_ID)?.remove();
+    const data = prefill || (await readBrandReportData());
 
     const overlay = document.createElement("div");
     overlay.id = OVERLAY_ID;
@@ -3417,13 +3540,20 @@
     body.appendChild(otherSec);
 
     const brandSec = section("Marca");
-    const brandBtn = document.createElement("button");
-    brandBtn.type = "button";
-    brandBtn.textContent = "Reportar marca genérica";
-    brandBtn.style.cssText = gtinBtn.style.cssText;
-    hover(brandBtn);
-    brandBtn.onclick = () => { menu.remove(); runBrandReport(); };
-    brandSec.appendChild(brandBtn);
+    const brandRow = document.createElement("div");
+    brandRow.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px";
+    const brandButton = (text, run) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = text;
+      btn.style.cssText = gtinBtn.style.cssText;
+      hover(btn);
+      btn.onclick = () => { menu.remove(); run(); };
+      brandRow.appendChild(btn);
+    };
+    brandButton("Validar marca", runBrandCheck);
+    brandButton("Reportar genérica", () => runBrandReport());
+    brandSec.appendChild(brandRow);
     body.appendChild(brandSec);
 
     menu.appendChild(body);
