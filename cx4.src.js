@@ -35,6 +35,7 @@
   document.getElementById(HOST_ID)?.remove();
   if (window.__mlfCx4Timer) clearInterval(window.__mlfCx4Timer);
   if (window.__mlfCx4Guard) document.removeEventListener("click", window.__mlfCx4Guard, true);
+  if (window.__mlfCx4Focus) document.removeEventListener("focusin", window.__mlfCx4Focus, true);
 
   const STORE_KEY = "mlf.cx4.tasks.v1";
   const BACKUP_KEY = "mlf.cx4.lastBackup";
@@ -503,6 +504,8 @@
     th, td { text-align: left; padding: 4px 5px; border-bottom: 1px solid #25252c; vertical-align: top; word-break: break-word; }
     th { color: #8b8b96; font-weight: 500; }
     td.n { color: #8b8b96; width: 24px; }
+    tr.act td { background: #1c2c47; border-bottom-color: #3483fa; }
+    tr.act td:first-child { box-shadow: inset 4px 0 0 #3483fa; color: #6ab0ff; font-weight: 700; }
     input.gid { width: 78px; background: #0f0f12; color: #ececf0; border: 1px solid #3b3b45; border-radius: 6px; padding: 3px 5px; font: inherit; }
     input.gid:focus { outline: 1px solid #3483fa; }
     .empty { color: #6d6d78; }
@@ -557,6 +560,7 @@
     gids: {}, // rowKey -> GID Creación escrito a mano
     crea: {}, // rowKey -> ID del producto creado (lo completa el colaborador)
     review: null, // { i } mientras se revisan las creaciones fila por fila
+    focusRow: -1, // fila de la grilla donde se está trabajando (último foco)
     open: false,
     prompt: false, // "¿querés retomar?"
     tracking: new Set(), // tareas con autoguardado activo en esta sesión
@@ -608,6 +612,41 @@
   // Forzar solo admite números: cualquier otro carácter se marca en rojo.
   const notNumeric = (v) => !!v && v !== NO_CREADO && /\D/.test(v);
 
+  // Fila "en trabajo": la que se revisa en "Revisar creaciones" o, si no,
+  // la última donde se puso el foco en la grilla.
+  function activeIdx() {
+    if (state.review) {
+      const ri = reviewIdx(state.rows);
+      if (ri.length) return ri[Math.min(state.review.i, ri.length - 1)];
+    }
+    return state.focusRow;
+  }
+  // Marca esa fila también en la grilla real (borde + fondo azul suave).
+  function markActiveRow() {
+    const a = activeIdx();
+    rowElements().forEach((r, i) => {
+      const on = i === a;
+      if (on && (!r.el.dataset.cx4Act || !r.el.style.outline)) {
+        if (!r.el.dataset.cx4Act) r.el.dataset.cx4Prev = r.el.style.cssText;
+        r.el.dataset.cx4Act = "1";
+        r.el.style.cssText += ";outline:3px solid #3483fa!important;outline-offset:-3px;background-color:rgba(52,131,250,.12)!important;";
+      } else if (!on && r.el.dataset.cx4Act) {
+        r.el.style.cssText = r.el.dataset.cx4Prev || "";
+        delete r.el.dataset.cx4Act;
+        delete r.el.dataset.cx4Prev;
+      }
+    });
+  }
+  let lastAct = -2;
+  function syncActive() {
+    const a = activeIdx();
+    markActiveRow();
+    if (a !== lastAct) {
+      lastAct = a;
+      if (!isTyping()) render();
+    }
+  }
+
   function rowsTable(rows, editable) {
     if (!rows.length) return '<div class="none">Sin filas.</div>';
     return (
@@ -622,7 +661,7 @@
           const paste = (field) =>
             editable && hasId(r) ? '<br><button class="mini" data-act="paste-id" data-field="' + field + '" data-i="' + i + '" title="Pegar ' + esc(r.created) + ' acá" aria-label="Pegar ID">' + PASTE_ICON + "</button>" : "";
           return (
-            "<tr><td class='n'>" + r.n + "</td><td>" + esc(r.itemId) +
+            "<tr" + (editable && i === activeIdx() ? " class='act'" : "") + "><td class='n'>" + r.n + "</td><td>" + esc(r.itemId) +
             (r.variationId ? "<br><span class='empty'>var " + esc(r.variationId) + "</span>" : "") +
             "</td><td>" + gidCell + "</td><td>" + dash(r.resolution) + "</td><td>" + (/\D/.test(r.force || "") ? "<span class='redtxt'>" + esc(r.force) + "</span>" : dash(r.force)) + paste("force") + "</td><td>" + dash(r.comment) + paste("comment") + "</td></tr>"
           );
@@ -890,7 +929,11 @@
     if (act === "close") {
       clearInterval(window.__mlfCx4Timer);
       document.removeEventListener("click", window.__mlfCx4Guard, true);
+      document.removeEventListener("focusin", window.__mlfCx4Focus, true);
       markFinalize([]);
+      state.review = null;
+      state.focusRow = -1;
+      markActiveRow();
       host.remove();
       return;
     }
@@ -1224,12 +1267,25 @@
   };
   document.addEventListener("click", window.__mlfCx4Guard, true);
 
+  // El foco en un campo de la grilla indica en qué fila se está trabajando.
+  window.__mlfCx4Focus = (ev) => {
+    const rowEl = ev.target && ev.target.closest ? ev.target.closest('[data-testid^="backoffice-row-"]') : null;
+    if (!rowEl) return;
+    const i = rowElements().findIndex((r) => r.el === rowEl);
+    if (i >= 0 && i !== state.focusRow) {
+      state.focusRow = i;
+      syncActive();
+    }
+  };
+  document.addEventListener("focusin", window.__mlfCx4Focus, true);
+
   async function tick() {
     if (!host.isConnected) {
       clearInterval(window.__mlfCx4Timer);
       return;
     }
     markFinalize(missingRes());
+    syncActive();
     if (state.busy) return;
     const prev = currentKey();
     const meta = readTaskMeta();
@@ -1243,6 +1299,7 @@
       state.watchKey = key;
       state.meta = meta;
       state.tracking.clear(); // el autoguardado vale solo mientras se está en esa tarea
+      state.focusRow = -1;
       state.confirm = null;
       state.msg = null;
       const saved = key ? loadStore()[key] : null;
