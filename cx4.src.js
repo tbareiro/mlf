@@ -25,7 +25,7 @@
 //     navegador, y respaldo manual (archivo .json o portapapeles). El
 //     panel avisa si hace mucho que no hacés un respaldo.
 //
-// Nunca clickea Enviar/Finalizar/Postergar/Guardar de la herramienta: solo
+// No clickea por su cuenta Enviar/Finalizar/Postergar/Guardar: solo
 // lee la grilla y, al restaurar, completa los campos editables.
 
 (function () {
@@ -34,6 +34,7 @@
   const HOST_ID = "mlf-cx4-host";
   document.getElementById(HOST_ID)?.remove();
   if (window.__mlfCx4Timer) clearInterval(window.__mlfCx4Timer);
+  if (window.__mlfCx4Guard) document.removeEventListener("click", window.__mlfCx4Guard, true);
 
   const STORE_KEY = "mlf.cx4.tasks.v1";
   const BACKUP_KEY = "mlf.cx4.lastBackup";
@@ -888,6 +889,8 @@
     state.msg = null;
     if (act === "close") {
       clearInterval(window.__mlfCx4Timer);
+      document.removeEventListener("click", window.__mlfCx4Guard, true);
+      markFinalize([]);
       host.remove();
       return;
     }
@@ -1177,11 +1180,56 @@
     await persistEntry(null);
   }
 
+  // ---- Aviso al "Finalizar Tarea" con filas sin resolución ----
+  // No finaliza nada por su cuenta: solo frena el click del usuario y le
+  // pregunta; si confirma, repite ese mismo click.
+  const finalizeBtn = (t) => {
+    const b = t && t.closest ? t.closest("button") : null;
+    return b && /^\s*finalizar tarea\s*$/i.test(b.textContent) ? b : null;
+  };
+  const missingRes = () => rowElements().filter((r) => !readResolution(r.el)).map((r) => r.idx + 1);
+  function markFinalize(miss) {
+    document.querySelectorAll("button").forEach((b) => {
+      if (!finalizeBtn(b)) return;
+      if (miss.length) {
+        b.style.outline = "3px solid #e5483b";
+        b.dataset.cx4Warn = "1";
+        b.title = "Cx4: falta la resolución en la(s) fila(s) " + miss.join(", ");
+      } else if (b.dataset.cx4Warn) {
+        b.style.outline = "";
+        b.removeAttribute("title");
+        delete b.dataset.cx4Warn;
+      }
+    });
+  }
+  let finalizeBypass = false;
+  window.__mlfCx4Guard = (ev) => {
+    if (finalizeBypass) return;
+    const b = finalizeBtn(ev.target);
+    if (!b) return;
+    const miss = missingRes();
+    if (!miss.length) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    const ok = window.confirm(
+      "Te falta la resolución en la(s) fila(s) " + miss.join(", ") + ".\n\nNo se puede finalizar una tarea con resoluciones vacías. ¿Finalizar igual?"
+    );
+    if (ok) {
+      // Fuera del evento actual: así el navegador no descarta el click repetido.
+      setTimeout(() => {
+        finalizeBypass = true;
+        try { b.click(); } finally { finalizeBypass = false; }
+      }, 0);
+    }
+  };
+  document.addEventListener("click", window.__mlfCx4Guard, true);
+
   async function tick() {
     if (!host.isConnected) {
       clearInterval(window.__mlfCx4Timer);
       return;
     }
+    markFinalize(missingRes());
     if (state.busy) return;
     const prev = currentKey();
     const meta = readTaskMeta();
